@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="twitter:widgets:csp" content="on">
+
+    <title>OTA user interaction data helper</title>
+
+    <link rel="stylesheet" href="css/normalize.css">
+    <link rel="stylesheet" href="css/skeleton.css">
+    <link rel="stylesheet" href="css/panel.css">
+</head>
+<body>
+<p class="status" title="Unable to contact content script. Try reloading the page.">(disconnected)</p>
+<nav>
+    <button class="button-primary record">Record</button>
+    <button class="clear">Clear</button>
+    <button class="top hidden">Top</button>
+</nav>
+<main>
+    <table class="events u-full-width">
+        <thead>
+        <tr>
+            <th>
+                <div class="type-filters">
+                    <div class="checkbox nodes-added" title="nodes added">
+                        <input type="checkbox" id="nodes-added-filter" checked/>
+                        <label for="nodes-added-filter"></label>
+                    </div>
+                    <div class="checkbox nodes-removed" title="nodes removed">
+                        <input type="checkbox" id="nodes-removed-filter" checked/>
+                        <label for="nodes-removed-filter"></label>
+                    </div>
+                    <div class="checkbox attribute-changed" title="attribute changed">
+                        <input type="checkbox" id="attribute-changed-filter" checked/>
+                        <label for="attribute-changed-filter"></label>
+                    </div>
+                    <div class="checkbox text-changed" title="text changed">
+                        <input type="checkbox" id="text-changed-filter" checked/>
+                        <label for="text-changed-filter"></label>
+                    </div>
+                </div>
+                Event <span class="counter">(0)</span>
+            </th>
+            <th>
+                <input type="text" placeholder="filter" class="target-filter"/>
+                Target
+            </th>
+            <th>Details</th>
+        </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</main>
+<aside class="intro">
+    <p>Click <em>"Record"</em> button below to start listening for DOM changes.</p>
+
+    <div class="social-buttons">
+        <iframe
+            src="http://ghbtns.com/github-btn.html?user=kdzwinel&amp;repo=DOMListenerExtension&amp;type=watch&amp;count=true&amp;size=small"
+            style="background-color: transparent; border: none; overflow:hidden" width="90" height="20"></iframe>
+        <a href="https://twitter.com/share" class="twitter-share-button"
+           data-url="https://chrome.google.com/webstore/detail/domlistener/jlfdgnlpibogjanomigieemaembjeolj"
+           data-text="DOMListener Chrome Extension - monitor, browse and filter all DOM changes with ease."
+           data-count="horizontal">&nbsp;</a>
+    </div>
+</aside>
+
+<script src="js/ContentScriptProxy.js"></script>
+<script src="js/EventTable.js"></script>
+<script src="js/ScrollHelper.js"></script>
+<script src="js/panel.js"></script>
+
+<script src="https://platform.twitter.com/widgets.js"></script>
+</body>
+</html>
