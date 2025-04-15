@@ -1,29 +1,35 @@
 {
-    "manifest_version": 2,
-    "name": "OTA Browser Action Capture",
-    "version": "1.0",
-    "description": "Monitor, browse and filter all DOM changes with ease.",
-    "icons": {
-        "128": "ico/logo_128.png",
-        "48": "ico/logo_48.png"
-    },
-    "permissions": [
-        "tabs",
-        "<all_urls>",
-		"webNavigation"
-    ],
-    "background": {
-        "scripts": ["js/background.js"]
-    },
-    "devtools_page": "devtools.html",
+	"manifest_version": 3,
+	"name": "OTA Browser Action Capture",
+	"version": "1.0",
+	"description": "Monitor, browse and filter all DOM changes with ease.",
+	"icons": {
+		"128": "ico/ota-logo-128.png",
+		"48": "ico/ota-logo-48.png"
+	},
+	"permissions": [
+		"tabs",
+		"webNavigation",
+		"scripting"
+	],
+	"host_permissions": [
+		"<all_urls>"
+	],
+	"background": {
+		"service_worker": "js/background.js"
+	},
+	"devtools_page": "devtools.html",
 	"content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": [
-		"js/elementProcess.js",
-        "lib/purify.min.js"
-      ]
-    }
-  ],
-    "content_security_policy": "script-src 'self' https://platform.twitter.com; object-src 'self'"
-}
+		{
+			"matches": ["<all_urls>"],
+			"js": [
+				"js/elementProcess.js",
+				"lib/purify.min.js"
+			]
+		}
+	],
+	"content_security_policy": {
+		"extension_pages": "script-src 'self'; object-src 'self'"
+	}
+  }
+  

@@ -20,7 +20,7 @@
 
 	function sendDataToCollectorServer(data){
 		// Optionally send a response back.
-		fetch('http://localhost:4934/action-data', {
+		fetch('http://127.0.0.1:4934/action-data', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
@@ -58,14 +58,16 @@
                 tabId = message.tabId;
                 devToolsPorts[tabId] = port;
 
-                chrome.tabs.executeScript(message.tabId, {
-                    file: message.scriptToInject,
-                    runAt: "document_start"
-                }, function () {
-                    if (chrome.runtime.lastError) {
-                        console.log('[OTA DOM Background]: Error injecting script', chrome.runtime.lastError);
-                    }
-                });
+				chrome.scripting.executeScript({
+					target: { tabId: message.tabId },
+					files: [message.scriptToInject]
+				}, (injectionResults) => {
+					if (chrome.runtime.lastError) {
+						console.log('[OTA DOM Background]: Error injecting script', chrome.runtime.lastError);
+					} else {
+						console.log('[OTA DOM Background]: Script injected successfully', injectionResults);
+					}
+				});
             } else {
                 //pass message from DevTools panel to a content script
                 if (contentScriptPorts[tabId]) {
@@ -112,11 +114,21 @@
     }
 
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+		console.log("Background received action:", message.summaryEvent);
 		if (message.type === 'send-summary-event') {
 		  sendDataToCollectorServer(message.summaryEvent);
 		  return true; // Keep the messaging channel open for asynchronous response.
 		}
 	});
+
+	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+		if (message.type === 'submit') {
+		  console.log("Background received submit event data:", message.summaryEvent);
+		  // Process the event data as needed.
+		  sendResponse({ status: 'success' });
+		}
+		return false;
+	  });
 
 	const lastPageGoToTimestamps = {};
 

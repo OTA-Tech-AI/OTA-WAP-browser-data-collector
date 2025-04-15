@@ -7,6 +7,8 @@ const DOM_CACHE = {
     }
   };
 
+const OTA_INPUT_ELEMENT_UNIQUE_ID_PREFIX = "ota-input-field-element-id"
+
 /**
  * Searches up to maxDepth levels upward and downward from a target node
  * for an interactive element. If an interactive element is found, returns it;
@@ -82,7 +84,36 @@ function findBestInteractiveElement(target, maxDepth = 3) {
   
 	// If nothing was found in either direction up to maxDepth, return the original target.
 	return target;
-  }
+}
+
+function findFirstLinkElementOrNone(target){
+	const interactiveElements = new Set([
+		"button", "input", "select", "textarea",
+		"details", "summary", "label", "option", "optgroup", "fieldset", "legend"
+	  ]);
+	  
+	  // Limit upward traversal to at most 5 layers.
+	  let layers = 0;
+	  while (target && layers < 5) {
+		// If you encounter an interactive element (other than an anchor)
+		if (interactiveElements.has(target.tagName.toLowerCase())) {
+		  console.log("Found interactive element in the upward chain. Exiting:", target.tagName);
+		  return null;  // Let the other listener handle this case.
+		}
+		// If the element is an anchor (<A>), we've found our candidate.
+		if (target.tagName === 'A') {
+		  break;
+		}
+		target = target.parentElement;
+		layers++;
+	  }
+	  
+	  // If no anchor was found after 5 layers, do nothing.
+	  if (!target || target.tagName !== 'A') {
+		return null;
+	  }
+	  return target;
+}
 
 
   function getCachedBoundingRect(element) {
@@ -191,3 +222,11 @@ function getVisibleHTML(viewportExpansion = 0) {
 }
 
   
+function getUniqueIdentifierForInput(element) {
+	let uid = element.getAttribute(OTA_INPUT_ELEMENT_UNIQUE_ID_PREFIX);
+	if (!uid) {
+	uid = 'input-' + Math.floor(Math.random() * 10000);
+	element.setAttribute(OTA_INPUT_ELEMENT_UNIQUE_ID_PREFIX, uid);
+	}
+	return uid;
+  }

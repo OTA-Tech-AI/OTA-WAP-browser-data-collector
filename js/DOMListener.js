@@ -4,6 +4,7 @@
 
     var MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
 	window.lastClickedTarget = null;
+	window.OTAinputFieldValues = {};
 
     if (typeof MutationObserver !== 'function') {
         console.error('DOM Listener Extension: MutationObserver is not available in your browser.');
@@ -45,7 +46,7 @@
             var player = node.animate([
                 { boxShadow: '0 0 0 5px rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', 1)' },
                 { boxShadow: '0 0 0 5px rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', 0)' }
-            ], 6000);
+            ], 600);
 
             player.onfinish = function () {
                 node.style.boxShadow = boxShadowOrg;
@@ -60,6 +61,81 @@
             node.scrollIntoViewIfNeeded();
         }
     }
+
+	/**
+	 * Recursively builds a trimmed HTML string from the given node.
+	 * Only goes N layers deep. Deeper nested content is replaced with a placeholder.
+	 *
+	 * @param {Node} node - The DOM node to trim.
+	 * @param {number} maxDepth - Maximum depth to include.
+	 * @param {number} currentDepth - Current recursion level (default 0).
+	 * @return {string} The HTML string representing the trimmed node.
+	 */
+	function trimElementWithPlaceholder(node, maxDepth = 5, currentDepth = 0) {
+
+		if (node.nodeType === Node.TEXT_NODE) {
+			return node.textContent;
+			}
+		
+			// Skip non-element nodes (you might extend this if needed).
+			if (node.nodeType !== Node.ELEMENT_NODE) {
+			return '';
+			}
+		
+		// Build the opening tag with all its attributes intact.
+		let tagName = node.tagName.toLowerCase();
+		let attrString = '';
+		// Iterate through all attributes
+		for (let i = 0; i < node.attributes.length; i++) {
+			const attr = node.attributes[i];
+			attrString += ` ${attr.name}="${attr.value}"`;
+		}
+	
+		let openingTag = `<${tagName}${attrString}>`;
+		let closingTag = `</${tagName}>`;
+	
+		// If we've reached or exceeded the max depth, insert the marker
+		if (currentDepth >= maxDepth - 1) {
+		return `${openingTag}&rme${closingTag}`;
+		}
+	
+		// Otherwise, process the child nodes recursively.
+		let childrenHTML = '';
+		node.childNodes.forEach(child => {
+		childrenHTML += trimElementWithPlaceholder(child, maxDepth, currentDepth + 1);
+		});
+	
+		return `${openingTag}${childrenHTML}${closingTag}`;
+	}
+
+	function trimChangedEventNode(node, max_depth = 3){
+		let trimmedHtml = trimElementWithPlaceholder(node, max_depth);
+
+		if (trimmedHtml.length < 200) {
+			return trimmedHtml;
+		}
+
+		const isWholeDocument = /^\s*<html\b/i.test(trimmedHtml);
+
+		var purifyConfig = {
+			WHOLE_DOCUMENT: isWholeDocument,
+			ALLOWED_TAGS: [
+			  'a', 'abbr', 'address', 'article', 'aside',
+			  'b', 'blockquote', 'br', 'button', 'caption',
+			  'cite', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+			  'hr', 'i', 'img', 'input', 'label', 'li', 'ol', 'p', 'q',
+			  'small', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td',
+			  'tfoot', 'th', 'thead', 'tr', 'ul', 'select', 'option', 'textarea',
+			  'svg', 'path', 'html', 'header', 'body'
+			],
+			ALLOWED_ATTR: [
+			  'id', 'class', 'href', 'src', 'alt', 'ota-use-interactive-target',
+			  'role', 'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-hidden',
+			  'placeholder', 'type', 'value', 'name', 'checked', 'selected', 'disabled'
+			]
+		};
+		return DOMPurify.sanitize(trimmedHtml, purifyConfig);
+	}
 
     function nodeToSelector(node, contextNode) {
         if (node.id) {
@@ -95,7 +171,7 @@
 		switch (node.nodeType) {
 		  case Node.ELEMENT_NODE:
 			// Return the entire HTML structure, including the node's children
-			return node.cloneNode(true).outerHTML;
+			return trimChangedEventNode(node);//trimElementWithPlaceholder(node, 3);//node.cloneNode(true).outerHTML;
 		  case Node.TEXT_NODE:
 			return node.nodeValue; // or node.textContent.trim() if you want to trim
 		  case Node.COMMENT_NODE:
@@ -194,6 +270,9 @@
                     target: nodeToObject(record.target),
                     nodes: nodesToObjects(record.addedNodes, record.target)
                 });
+				Array.prototype.forEach.call(record.addedNodes, function (node) {
+					highlightNode(node, {r: 138, g: 219, b: 246});
+				});
             }
             if (record.removedNodes && record.removedNodes.length) {
                 events.push({
@@ -201,10 +280,14 @@
                     target: nodeToObject(record.target),
                     nodes: nodesToObjects(record.removedNodes, record.target)
                 });
+				highlightNode(record.target, {r: 255, g: 198, b: 139});
             }
             // Return a single event if only one exists, else an array.
             return events.length === 1 ? events[0] : events;
         } else if (record.type === 'attributes') {
+			if(record.attributeName != "ota-use-interactive-target"){
+				highlightNode(record.target, {r: 179, g: 146, b: 248});
+			}
             return {
                 type: 'attribute changed',
                 target: nodeToObject(record.target),
@@ -213,6 +296,7 @@
                 newValue: record.target.getAttribute(record.attributeName)
             };
         } else if (record.type === 'characterData') {
+			highlightNode(record.target, {r: 254, g: 239, b: 139});
             return {
                 type: 'text changed',
                 target: nodeToObject(record.target),
@@ -240,74 +324,6 @@
 			  });
 		}
 	  }
-
-	function isInteractive(element) {
-		if (!element) return false;
-		var interactiveTags = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'];
-		if (interactiveTags.indexOf(element.tagName) !== -1) {
-			return true;
-		}
-		// Check if the element is contentEditable.
-		if (element.isContentEditable) {
-			return true;
-		}
-		// Check if an onclick handler is defined or if it has a role of button.
-		if (typeof element.onclick === 'function' || element.getAttribute('role') === 'button') {
-			return true;
-		}
-		// Optionally, if the element has a tabindex attribute, consider it interactive.
-		if (element.hasAttribute('tabindex')) {
-			return true;
-		}
-		return false;
-	}
-
-
-	/**
-	 * Recursively builds a trimmed HTML string from the given node.
-	 * Only goes N layers deep. Deeper nested content is replaced with a placeholder.
-	 *
-	 * @param {Node} node - The DOM node to trim.
-	 * @param {number} maxDepth - Maximum depth to include.
-	 * @param {number} currentDepth - Current recursion level (default 0).
-	 * @return {string} The HTML string representing the trimmed node.
-	 */
-	function trimElementWithPlaceholder(node, maxDepth = 5, currentDepth = 0) {
-
-		if (node.nodeType === Node.TEXT_NODE) {
-			return node.textContent;
-		  }
-		
-		  // Skip non-element nodes (you might extend this if needed).
-		  if (node.nodeType !== Node.ELEMENT_NODE) {
-			return '';
-		  }
-		
-		// Build the opening tag with all its attributes intact.
-		let tagName = node.tagName;
-		let attrString = '';
-		// Iterate through all attributes
-		for (let i = 0; i < node.attributes.length; i++) {
-			const attr = node.attributes[i];
-			attrString += ` ${attr.name}="${attr.value}"`;
-		}
-	
-		let openingTag = `<${tagName}${attrString}>`;
-		let closingTag = `</${tagName}>`;
-	
-		// If we've reached or exceeded the max depth, insert the marker
-		if (currentDepth >= maxDepth - 1) {
-		return `${openingTag}&rme${closingTag}`;
-		}
-	
-		// Otherwise, process the child nodes recursively.
-		let childrenHTML = '';
-		node.childNodes.forEach(child => {
-		childrenHTML += trimElementWithPlaceholder(child, maxDepth, currentDepth + 1);
-		});
-	
-		return `${openingTag}${childrenHTML}${closingTag}`;
-	}
 
 
 	function trimTarget(node){
@@ -383,12 +399,17 @@
 			]
 		};
 
-		const visibleHTML = getVisibleHTML(0);
+		const visibleHTML = document.documentElement.outerHTML;//getVisibleHTML(0);
 		return DOMPurify.sanitize(visibleHTML, config);
 	}
 
     // --- NEW: User Action Handler ---
     function handleUserAction(event) {
+
+		if (event.target.matches('input, textarea, [contenteditable="true"]')) {
+			handleInputClick(event);
+			return;
+		  }
 
 		var actionTarget = {
 			type: event.type,
@@ -397,6 +418,15 @@
 			targetClass: event.target.className
 		}
 
+		const bestInteractiveElement = findBestInteractiveElement(event.target, 3);
+		bestInteractiveElement.setAttribute("ota-use-interactive-target", "1");
+
+		if(bestInteractiveElement.tagName == "A"){
+			bestInteractiveElement.removeAttribute("ota-use-interactive-target");
+			return;
+		}
+
+		actionTarget.target = trimTarget(bestInteractiveElement);
         var actionTime = Date.now();
 
         // Get mutations that occurred within the BUFFER_WINDOW before the action.
@@ -414,33 +444,45 @@
             });
 
             // Transform the raw mutation records to the loggable event format.
-            var beforeEvents = beforeMutations.map(transformRecord).filter(function (e) { return e !== null; });
-            var afterEvents = afterMutations.map(transformRecord).filter(function (e) { return e !== null; });
+            var beforeEvents = beforeMutations.map(transformRecord).reduce(function(acc, item) {
+				// If item is an array, concatenate its elements; otherwise, push it.
+				if (Array.isArray(item)) {
+				  return acc.concat(item);
+				} else if (item !== null && item !== undefined) {
+				  acc.push(item);
+				  return acc;
+				}
+				return acc;
+			  }, []);
+            var afterEvents = afterMutations.map(transformRecord).reduce(function(acc, item) {
+				// If item is an array, concatenate its elements; otherwise, push it.
+				if (Array.isArray(item)) {
+				  return acc.concat(item);
+				} else if (item !== null && item !== undefined) {
+				  acc.push(item);
+				  return acc;
+				}
+				return acc;
+			  }, []);
 
 			var allEvents = beforeEvents.concat(afterEvents);
 			allEvents = filterValidEvents(allEvents);
 
-			if(allEvents.length == 0){
+			if(allEvents.length == 0 || (allEvents.length == 1 && allEvents[0].attribute == "ota-use-interactive-target")){
+				bestInteractiveElement.removeAttribute("ota-use-interactive-target");
 				return;
 			}
-
-			const bestInteractiveElement = findBestInteractiveElement(event.target, 3);
-			bestInteractiveElement.setAttribute("ota-use-interactive-target", "1");
-			actionTarget.target = trimTarget(bestInteractiveElement);
-			var sanitizedPageHTML = getCurrentHTMLSanitized();
-
 
 			var summaryEvent = {
 				type: event.type,
 				actionTimestamp: actionTime,
 				eventTarget: actionTarget,
 				allEvents: allEvents,
-				pageHTMLContent: sanitizedPageHTML
+				pageHTMLContent: getCurrentHTMLSanitized()
 			};
 
 			bestInteractiveElement.removeAttribute("ota-use-interactive-target");
 
-			// sendSummaryEvent(summaryEvent);
 			chrome.runtime.sendMessage({
 				type: 'send-summary-event',
 				summaryEvent: summaryEvent
@@ -451,7 +493,9 @@
             // Log the summary of mutations surrounding the user action.
 			if (allEvents.length > 0) {
 				allEvents.forEach(function(singleEvent) {
-				  logEvent(singleEvent);
+					if(singleEvent.attribute != "ota-use-interactive-target"){
+						logEvent(singleEvent);
+					}
 				});
 			  }
 
@@ -462,23 +506,26 @@
 
 	function handleUserClickLink(event) {
 		// For example, we want to capture data when a link (<a>) is clicked.
-		let target = event.target;
+		let target = event.target;		
 		// Traverse up the DOM tree to find an anchor if the clicked element isn’t directly an <a>
-		while (target && target.tagName !== 'A' && target.parentElement) {
-		  target = target.parentElement;
-		}
-	  
+		// while (target && target.tagName !== 'A' && target.parentElement) {
+		//   target = target.parentElement;
+		//   console.log(target.tagName);
+		// }
+
+		target = findFirstLinkElementOrNone(target);
+
 		if (target && target.tagName === 'A') {
 
 			var actionTarget = {
 				type: event.type,
-				target: nodeToHTMLString(event.target),
-				targetId: event.target.id,
-				targetClass: event.target.className
+				target: nodeToHTMLString(target),
+				targetId: target.id,
+				targetClass: target.className
 			}
 
-			event.target.setAttribute("ota-use-interactive-target", "1");
-			actionTarget.target = trimTarget(event.target);
+			target.setAttribute("ota-use-interactive-target", "1");
+			actionTarget.target = trimTarget(target);
 			var sanitizedPageHTML = getCurrentHTMLSanitized();
 
 			var summaryEvent = {
@@ -494,8 +541,6 @@
 			type: 'page-go-to',
 			clickData: summaryEvent
 		  });
-
-		  console.log("Content script: User click captured", clickData);
 		}
 	}
 
@@ -505,6 +550,60 @@
 		sendResponse({ sanitizedPageHTML: sanitizedPageHTML });
 	}
 	}
+
+	function handleInputClick(event) {
+		const element = event.target;
+		const uid = getUniqueIdentifierForInput(element);
+		window.OTAinputFieldValues[uid] = element.value;
+		console.log("Input clicked and stored:", uid, element.value);
+	}
+
+	document.addEventListener('submit', function(event) {
+		// Prevent the default submission if desired:
+		// event.preventDefault();
+	  
+		// The target of the submit event is the form element.
+		let target = event.target;
+	  
+		// Build a summary object for the form similar to what you do for links.
+		var actionTarget = {
+		  type: event.type,
+		  target: nodeToHTMLString(target), // full HTML representation of the form
+		  targetId: target.id,
+		  targetClass: target.className
+		};
+	  
+		// Optionally, if you have similar functions for trimming and sanitizing,
+		// you can call them. For example, if you want to mark the target,
+		// then trim it:
+		target.setAttribute("ota-use-interactive-target", "1");
+		actionTarget.target = trimTarget(target);
+	  
+		// Get the entire current page HTML, sanitized.
+		var sanitizedPageHTML = getCurrentHTMLSanitized();
+	  
+		// Build the summaryEvent object in the same structure as your link click handler.
+		var summaryEvent = {
+		  type: event.type,
+		  actionTimestamp: Date.now(),
+		  eventTarget: actionTarget,
+		  allEvents: {},  // Customize if you have additional events or data to attach.
+		  pageHTMLContent: sanitizedPageHTML
+		};
+	  
+		// Send the summary event to the background script.
+		chrome.runtime.sendMessage({
+		  type: 'submit',
+		  summaryEvent: summaryEvent
+		}, function(response) {
+		  console.log("Response from background:", response);
+		});
+	  
+		console.log("Content script: Form submit captured", summaryEvent);
+	  
+		// Optionally, you can remove the attribute after processing.
+		target.removeAttribute("ota-use-interactive-target");
+	  });
 
     function findShadowRoots(node, list) {
         list = list || [];
@@ -524,12 +623,39 @@
         return list;
     }
 
-	// --- Attach user action event listeners ---
-	// document.addEventListener('click',handleUserClickLink);
-	// document.addEventListener('click', handleUserAction);
-	// document.addEventListener('keydown', handleUserAction);
-	// window.addEventListener('popstate', handleUserAction);
-	// chrome.runtime.onMessage.addListener(handleGetPageContent);
+
+	function handleInputBlur(event) {
+		const element = event.target;
+		const uid = getUniqueIdentifierForInput(element);
+		const oldValue = window.OTAinputFieldValues[uid] || "";
+		const newValue = element.value;
+		
+		if (oldValue !== newValue) {
+		  console.log("Input value changed:", uid, oldValue, "->", newValue);
+		  // Send a message to the background with the updated value
+		  chrome.runtime.sendMessage({
+			type: 'input-value-changed',
+			data: { id: uid, oldValue: oldValue, newValue: newValue }
+		  });
+		  // Update the global dictionary with the new value
+		  window.OTAinputFieldValues[uid] = newValue;
+		}
+	}
+	  
+	  // When starting to listen, attach the blur event only to text inputs:
+	  function addTextFieldBlurListeners() {
+		const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
+		textInputs.forEach(input => {
+		  input.addEventListener('blur', handleInputBlur);
+		});
+	  }
+	  
+	  function removeTextFieldBlurListeners() {
+		const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
+		textInputs.forEach(input => {
+		  input.removeEventListener('blur', handleInputBlur);
+		});
+	  }
 
     if (!window.domListenerExtension) {
         window.domListenerExtension = {
@@ -546,7 +672,8 @@
 
 				document.addEventListener('click',handleUserClickLink);
 				document.addEventListener('click', handleUserAction);
-				document.addEventListener('keydown', handleUserAction);
+				// document.addEventListener('keydown', handleUserAction);
+				addTextFieldBlurListeners();
 				window.addEventListener('popstate', handleUserAction);
 				chrome.runtime.onMessage.addListener(handleGetPageContent);
 				sendPageContentUpdatetoBackground("update");
@@ -555,7 +682,8 @@
                 observer.disconnect();
 				document.removeEventListener('click', handleUserClickLink);
 				document.removeEventListener('click', handleUserAction);
-				document.removeEventListener('keydown', handleUserAction);
+				// document.removeEventListener('keydown', handleUserAction);
+				removeTextFieldBlurListeners();
 				window.removeEventListener('popstate', handleUserAction);
 				chrome.runtime.onMessage.removeListener(handleGetPageContent);
 				sendPageContentUpdatetoBackground("delete");
