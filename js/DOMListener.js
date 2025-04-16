@@ -6,6 +6,14 @@
 	window.lastClickedTarget = null;
 	window.OTAinputFieldValues = {};
 
+	let clickTimer = null;
+	let doubleClicked = false;
+	const CLICK_DELAY = 500; // delay in ms to distinguish single vs double clic
+
+	// --- NEW: Buffer for mutation records ---
+	var mutationBuffer = [];
+	var BUFFER_WINDOW = 1000; // milliseconds for before/after user action
+
     if (typeof MutationObserver !== 'function') {
         console.error('DOM Listener Extension: MutationObserver is not available in your browser.');
         return;
@@ -30,10 +38,6 @@
     bgPageConnection.postMessage({
         type: 'connected',
     });
-
-    // --- NEW: Buffer for mutation records ---
-    var mutationBuffer = [];
-    var BUFFER_WINDOW = 1000; // milliseconds for before/after user action
 
     function highlightNode(node, color) {
         color = color || { r: 51, g: 195, b: 240 };
@@ -61,81 +65,6 @@
             node.scrollIntoViewIfNeeded();
         }
     }
-
-	/**
-	 * Recursively builds a trimmed HTML string from the given node.
-	 * Only goes N layers deep. Deeper nested content is replaced with a placeholder.
-	 *
-	 * @param {Node} node - The DOM node to trim.
-	 * @param {number} maxDepth - Maximum depth to include.
-	 * @param {number} currentDepth - Current recursion level (default 0).
-	 * @return {string} The HTML string representing the trimmed node.
-	 */
-	function trimElementWithPlaceholder(node, maxDepth = 5, currentDepth = 0) {
-
-		if (node.nodeType === Node.TEXT_NODE) {
-			return node.textContent;
-			}
-		
-			// Skip non-element nodes (you might extend this if needed).
-			if (node.nodeType !== Node.ELEMENT_NODE) {
-			return '';
-			}
-		
-		// Build the opening tag with all its attributes intact.
-		let tagName = node.tagName.toLowerCase();
-		let attrString = '';
-		// Iterate through all attributes
-		for (let i = 0; i < node.attributes.length; i++) {
-			const attr = node.attributes[i];
-			attrString += ` ${attr.name}="${attr.value}"`;
-		}
-	
-		let openingTag = `<${tagName}${attrString}>`;
-		let closingTag = `</${tagName}>`;
-	
-		// If we've reached or exceeded the max depth, insert the marker
-		if (currentDepth >= maxDepth - 1) {
-		return `${openingTag}&rme${closingTag}`;
-		}
-	
-		// Otherwise, process the child nodes recursively.
-		let childrenHTML = '';
-		node.childNodes.forEach(child => {
-		childrenHTML += trimElementWithPlaceholder(child, maxDepth, currentDepth + 1);
-		});
-	
-		return `${openingTag}${childrenHTML}${closingTag}`;
-	}
-
-	function trimChangedEventNode(node, max_depth = 3){
-		let trimmedHtml = trimElementWithPlaceholder(node, max_depth);
-
-		if (trimmedHtml.length < 200) {
-			return trimmedHtml;
-		}
-
-		const isWholeDocument = /^\s*<html\b/i.test(trimmedHtml);
-
-		var purifyConfig = {
-			WHOLE_DOCUMENT: isWholeDocument,
-			ALLOWED_TAGS: [
-			  'a', 'abbr', 'address', 'article', 'aside',
-			  'b', 'blockquote', 'br', 'button', 'caption',
-			  'cite', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-			  'hr', 'i', 'img', 'input', 'label', 'li', 'ol', 'p', 'q',
-			  'small', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td',
-			  'tfoot', 'th', 'thead', 'tr', 'ul', 'select', 'option', 'textarea',
-			  'svg', 'path', 'html', 'header', 'body'
-			],
-			ALLOWED_ATTR: [
-			  'id', 'class', 'href', 'src', 'alt', 'ota-use-interactive-target',
-			  'role', 'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-hidden',
-			  'placeholder', 'type', 'value', 'name', 'checked', 'selected', 'disabled'
-			]
-		};
-		return DOMPurify.sanitize(trimmedHtml, purifyConfig);
-	}
 
     function nodeToSelector(node, contextNode) {
         if (node.id) {
@@ -171,7 +100,7 @@
 		switch (node.nodeType) {
 		  case Node.ELEMENT_NODE:
 			// Return the entire HTML structure, including the node's children
-			return trimChangedEventNode(node);//trimElementWithPlaceholder(node, 3);//node.cloneNode(true).outerHTML;
+			return trimChangedEventNode(node, 5);//trimElementWithPlaceholder(node, 3);//node.cloneNode(true).outerHTML;
 		  case Node.TEXT_NODE:
 			return node.nodeValue; // or node.textContent.trim() if you want to trim
 		  case Node.COMMENT_NODE:
@@ -262,24 +191,46 @@
 
     // --- Helper to transform a mutation record into a loggable event ---
     function transformRecord(record) {
+		function isValidSelector(selector) {
+			const nonValidSelectors = new Set(['NOSCRIPT', 'SCRIPT']);
+			if (!selector) return false;
+		
+			const upperSelector = selector.toUpperCase();
+			const parts = upperSelector.split('>').map(part => part.trim());
+		
+			for (const part of parts) {
+				if (nonValidSelectors.has(part)) {
+					return false;
+				}
+			}
+			return !nonValidSelectors.has(selector);
+		}
         if (record.type === 'childList') {
             var events = [];
             if (record.addedNodes && record.addedNodes.length) {
-                events.push({
+
+				let event = {
                     type: 'nodes added',
                     target: nodeToObject(record.target),
                     nodes: nodesToObjects(record.addedNodes, record.target)
-                });
+                }
+				if(isValidSelector(event.nodes[0].selector)){
+					events.push(event);
+				}
 				Array.prototype.forEach.call(record.addedNodes, function (node) {
 					highlightNode(node, {r: 138, g: 219, b: 246});
 				});
             }
             if (record.removedNodes && record.removedNodes.length) {
-                events.push({
+
+				let event = {
                     type: 'nodes removed',
                     target: nodeToObject(record.target),
                     nodes: nodesToObjects(record.removedNodes, record.target)
-                });
+                }
+				if(isValidSelector(event.nodes[0].selector)){
+					events.push(event);
+				}
 				highlightNode(record.target, {r: 255, g: 198, b: 139});
             }
             // Return a single event if only one exists, else an array.
@@ -288,13 +239,16 @@
 			if(record.attributeName != "ota-use-interactive-target"){
 				highlightNode(record.target, {r: 179, g: 146, b: 248});
 			}
-            return {
+			let event = {
                 type: 'attribute changed',
                 target: nodeToObject(record.target),
                 attribute: record.attributeName,
                 oldValue: record.oldValue,
                 newValue: record.target.getAttribute(record.attributeName)
             };
+			if(isValidSelector(event.target.selector)){
+				return event;
+			}
         } else if (record.type === 'characterData') {
 			highlightNode(record.target, {r: 254, g: 239, b: 139});
             return {
@@ -326,35 +280,12 @@
 	  }
 
 
-	function trimTarget(node){
-		let trimmedHtml = trimElementWithPlaceholder(node, 4);
-
-		if (trimmedHtml.length < 200) {
-			return trimmedHtml;
-		}
-
-		var purifyConfig = {
-			ALLOWED_TAGS: [
-			  'a', 'abbr', 'address', 'article', 'aside',
-			  'b', 'blockquote', 'br', 'button', 'caption',
-			  'cite', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-			  'hr', 'i', 'img', 'input', 'label', 'li', 'ol', 'p', 'q',
-			  'small', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td',
-			  'tfoot', 'th', 'thead', 'tr', 'ul', 'select', 'option', 'textarea',
-			  'svg', 'path'
-			],
-			ALLOWED_ATTR: [
-			  'id', 'class', 'href', 'src', 'alt', 'ota-use-interactive-target',
-			  'role', 'aria-label', 'aria-labelledby', 'aria-describedby',
-			  'placeholder', 'type', 'value', 'name', 'checked', 'selected'
-			]
-		};
-		return DOMPurify.sanitize(trimmedHtml, purifyConfig);
-	}
-
 	function filterValidEvents(allEvents) {
 		return allEvents.filter(event => {
 			if (event.type === "attribute changed") {
+				if(event.attribute === "ota-use-interactive-target"){
+					return false;
+				}
 				// If oldValue and newValue are identical, discard this event.
 				return event.oldValue !== event.newValue;
 			}
@@ -399,17 +330,16 @@
 			]
 		};
 
-		const visibleHTML = document.documentElement.outerHTML;//getVisibleHTML(0);
+		const visibleHTML = getVisibleHTML(0);
 		return DOMPurify.sanitize(visibleHTML, config);
 	}
 
     // --- NEW: User Action Handler ---
     function handleUserAction(event) {
 
-		if (event.target.matches('input, textarea, [contenteditable="true"]')) {
-			handleInputClick(event);
+		if (CheckIsClickOnInputOrLabel(event)) {
 			return;
-		  }
+		}
 
 		var actionTarget = {
 			type: event.type,
@@ -468,7 +398,7 @@
 			var allEvents = beforeEvents.concat(afterEvents);
 			allEvents = filterValidEvents(allEvents);
 
-			if(allEvents.length == 0 || (allEvents.length == 1 && allEvents[0].attribute == "ota-use-interactive-target")){
+			if(allEvents.length <= 1 && allEvents[0].type == "attribute changed"){
 				bestInteractiveElement.removeAttribute("ota-use-interactive-target");
 				return;
 			}
@@ -508,11 +438,6 @@
 		// For example, we want to capture data when a link (<a>) is clicked.
 		let target = event.target;		
 		// Traverse up the DOM tree to find an anchor if the clicked element isn’t directly an <a>
-		// while (target && target.tagName !== 'A' && target.parentElement) {
-		//   target = target.parentElement;
-		//   console.log(target.tagName);
-		// }
-
 		target = findFirstLinkElementOrNone(target);
 
 		if (target && target.tagName === 'A') {
@@ -541,7 +466,9 @@
 			type: 'page-go-to',
 			clickData: summaryEvent
 		  });
+		  return true;
 		}
+		return false;
 	}
 
 	function handleGetPageContent(message, sender, sendResponse) {
@@ -551,6 +478,35 @@
 	}
 	}
 
+	function CheckIsClickOnInputOrLabel(event){
+		if (event.target.matches('input, textarea, [contenteditable="true"], label')) {
+			if (event.target.matches('label')) {
+			  // If the target is a label, try to get its associated input:
+			  let associatedInput = null;
+			  // First, check if the label has a "for" attribute.
+			  if (event.target.hasAttribute('for')) {
+				const forId = event.target.getAttribute('for');
+				associatedInput = document.getElementById(forId);
+			  }
+			  // If not, check if the label contains an input/textarea/contenteditable element.
+			  if (!associatedInput) {
+				  associatedInput = event.target.querySelector('input, textarea, [contenteditable="true"]');
+				}
+			  if (associatedInput) {
+				// Call handleInputClick with the associated input element.
+				handleInputClick({target: associatedInput});
+			  } else {
+				console.log("Clicked label but no associated input found:", event.target);
+			  }
+			} else {
+			  // For input, textarea, or contenteditable elements, handle them directly.
+			  handleInputClick(event);
+			}
+			return true; // End processing so that no further click handling occurs.
+		  }
+		  return false;
+	}
+
 	function handleInputClick(event) {
 		const element = event.target;
 		const uid = getUniqueIdentifierForInput(element);
@@ -558,7 +514,44 @@
 		console.log("Input clicked and stored:", uid, element.value);
 	}
 
-	document.addEventListener('submit', function(event) {
+
+
+	// "click" listener which will be delayed.
+	function debouncedClickHandler(event) {
+		// If a click occurs, clear any existing timer.
+		if (clickTimer) {
+		clearTimeout(clickTimer);
+		clickTimer = null;
+		}
+		
+		// Start the timer for a single click.
+		clickTimer = setTimeout(() => {
+		// If no double click has happened, process as a single click.
+		if (!doubleClicked) {
+			handleUserAction(event);
+		}
+		// Reset the double click flag and timer.
+		clickTimer = null;
+		doubleClicked = false;
+		}, CLICK_DELAY);
+	}
+
+	// "dblclick" listener.
+	function dblClickHandler(event) {
+		// Mark that a double click occurred.
+		doubleClicked = true;
+		// If a timer is pending for single click, cancel it.
+		if (clickTimer) {
+		clearTimeout(clickTimer);
+		clickTimer = null;
+		}
+		// Process double click action.
+		console.log("double click");
+		handleUserAction(event);
+	}
+
+
+	function submitHandler(event){
 		// Prevent the default submission if desired:
 		// event.preventDefault();
 	  
@@ -603,7 +596,8 @@
 	  
 		// Optionally, you can remove the attribute after processing.
 		target.removeAttribute("ota-use-interactive-target");
-	  });
+	}
+
 
     function findShadowRoots(node, list) {
         list = list || [];
@@ -631,31 +625,51 @@
 		const newValue = element.value;
 		
 		if (oldValue !== newValue) {
-		  console.log("Input value changed:", uid, oldValue, "->", newValue);
-		  // Send a message to the background with the updated value
+			// Send a message to the background with the updated value
+		console.log("Input value changed:", event);
+
+		let target = event.target;
+
+		var actionTarget = {
+			type: event.type,
+			target: "",
+			targetId: target.id,
+			targetClass: target.className,
+			value: target.attributes.value.value
+		}
+
+		actionTarget.target = trimTarget(target);
+
+		var summaryEvent = {
+			type: "input-change",
+			actionTimestamp: Date.now(),
+			eventTarget: actionTarget,
+			allEvents: {},
+			pageHTMLContent: getCurrentHTMLSanitized()
+		};
 		  chrome.runtime.sendMessage({
 			type: 'input-value-changed',
-			data: { id: uid, oldValue: oldValue, newValue: newValue }
+			summaryEvent: summaryEvent
 		  });
 		  // Update the global dictionary with the new value
 		  window.OTAinputFieldValues[uid] = newValue;
 		}
 	}
 	  
-	  // When starting to listen, attach the blur event only to text inputs:
-	  function addTextFieldBlurListeners() {
-		const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
-		textInputs.forEach(input => {
-		  input.addEventListener('blur', handleInputBlur);
-		});
-	  }
+	// When starting to listen, attach the blur event only to text inputs:
+	function addTextFieldBlurListeners() {
+	const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
+	textInputs.forEach(input => {
+		input.addEventListener('blur', handleInputBlur);
+	});
+	}
 	  
-	  function removeTextFieldBlurListeners() {
-		const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
-		textInputs.forEach(input => {
-		  input.removeEventListener('blur', handleInputBlur);
-		});
-	  }
+	function removeTextFieldBlurListeners() {
+	const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
+	textInputs.forEach(input => {
+		input.removeEventListener('blur', handleInputBlur);
+	});
+	}
 
     if (!window.domListenerExtension) {
         window.domListenerExtension = {
@@ -670,9 +684,10 @@
                     observer.observe(shadowRoot, observerSettings);
                 });
 
-				document.addEventListener('click',handleUserClickLink);
-				document.addEventListener('click', handleUserAction);
-				// document.addEventListener('keydown', handleUserAction);
+				document.addEventListener('click', handleUserClickLink);
+				document.addEventListener('click', debouncedClickHandler);
+				document.addEventListener('dblclick', dblClickHandler);
+				document.addEventListener('submit', submitHandler);
 				addTextFieldBlurListeners();
 				window.addEventListener('popstate', handleUserAction);
 				chrome.runtime.onMessage.addListener(handleGetPageContent);
@@ -681,8 +696,9 @@
             stopListening: function () {
                 observer.disconnect();
 				document.removeEventListener('click', handleUserClickLink);
-				document.removeEventListener('click', handleUserAction);
-				// document.removeEventListener('keydown', handleUserAction);
+				document.removeEventListener('click', debouncedClickHandler);
+				document.removeEventListener('dblclick', dblClickHandler);
+				document.removeEventListener('submit', submitHandler);
 				removeTextFieldBlurListeners();
 				window.removeEventListener('popstate', handleUserAction);
 				chrome.runtime.onMessage.removeListener(handleGetPageContent);

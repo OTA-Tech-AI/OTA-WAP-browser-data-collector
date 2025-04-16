@@ -6,7 +6,7 @@
 		// Send a message to the content script in this tab to get the page content.
 		chrome.tabs.sendMessage(tabId, { type: 'get-page-content' }, function(response) {
 			if (chrome.runtime.lastError) {
-				console.error("Error retrieving page content:", chrome.runtime.lastError);
+				console.error("[OTA DOM Background]: Error retrieving page content:", chrome.runtime.lastError);
 				return;
 			}
 			if (response && response.sanitizedPageHTML) {
@@ -115,27 +115,38 @@
 
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 		console.log("Background received action:", message.summaryEvent);
-		if (message.type === 'send-summary-event') {
-		  sendDataToCollectorServer(message.summaryEvent);
-		  return true; // Keep the messaging channel open for asynchronous response.
+		const tabId = sender.tab.id;
+		if (message.type === 'send-summary-event' || message.type === 'submit') {
+			sendDataToCollectorServer(message.summaryEvent);
+			return true;
+		}
+		else if (message.type === 'input-value-changed'){
+			const lastTimestamp = lastPageGoToTimestamps[tabId];
+			const summaryEvent = message.summaryEvent;
+			const currentTimestamp = summaryEvent.actionTimestamp;
+			if (currentTimestamp - lastTimestamp < 500) { // if less than 100 ms passed, ignore duplicate
+				console.log(`[OTA DOM Background]: input blur after clicking on link, ignored for tab ${tabId}`);
+				return false;
+			}
+			sendDataToCollectorServer(message.summaryEvent);
+			return true;
 		}
 	});
 
-	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-		if (message.type === 'submit') {
-		  console.log("Background received submit event data:", message.summaryEvent);
-		  // Process the event data as needed.
-		  sendResponse({ status: 'success' });
-		}
-		return false;
-	  });
+	// chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+	// 	if (message.type === 'submit') {
+	// 	  console.log("Background received submit event data:", message.summaryEvent);
+	// 	  // Process the event data as needed.
+	// 	  sendResponse({ status: 'success' });
+	// 	}
+	// 	return false;
+	//   });
 
 	const lastPageGoToTimestamps = {};
 
 	// Listen for messages from content scripts.
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 		if (message.type === 'page-go-to') {
-
 			const tabId = sender.tab.id;
 			const clickData = message.clickData;
 
@@ -146,7 +157,7 @@
 				if (lastPageGoToTimestamps[tabId] !== undefined) {
 				  const lastTimestamp = lastPageGoToTimestamps[tabId];
 
-				  if (currentTimestamp - lastTimestamp < 100) { // if less than 100 ms passed, ignore duplicate
+				  if (currentTimestamp - lastTimestamp < 500) { // if less than 100 ms passed, ignore duplicate
 					console.log(`[OTA DOM Background]: Duplicate click data ignored for tab ${tabId}`);
 					return false;
 				  }
@@ -194,7 +205,7 @@
 		if (details.transitionQualifiers && details.transitionQualifiers.includes('forward_back')) {
 			console.log("[OTA DOM Background]: GO BACK or GO FORWARD navigation detected in tab:", tabId);
 			var summaryEvent = {
-				type: "go back or forward",
+				type: "go-back-or-forward",
 				actionTimestamp: Date.now(),
 				eventTarget: "",
 				allEvents: "",

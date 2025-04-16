@@ -221,7 +221,7 @@ function getVisibleHTML(viewportExpansion = 0) {
   return clone.outerHTML;
 }
 
-  
+
 function getUniqueIdentifierForInput(element) {
 	let uid = element.getAttribute(OTA_INPUT_ELEMENT_UNIQUE_ID_PREFIX);
 	if (!uid) {
@@ -230,3 +230,105 @@ function getUniqueIdentifierForInput(element) {
 	}
 	return uid;
   }
+
+/**
+ * Recursively builds a trimmed HTML string from the given node.
+ * Only goes N layers deep. Deeper nested content is replaced with a placeholder.
+ *
+ * @param {Node} node - The DOM node to trim.
+ * @param {number} maxDepth - Maximum depth to include.
+ * @param {number} currentDepth - Current recursion level (default 0).
+ * @return {string} The HTML string representing the trimmed node.
+ */
+function trimElementWithPlaceholder(node, maxDepth = 5, currentDepth = 0) {
+
+	if (node.nodeType === Node.TEXT_NODE) {
+		return node.textContent;
+		}
+	
+		// Skip non-element nodes (you might extend this if needed).
+		if (node.nodeType !== Node.ELEMENT_NODE) {
+		return '';
+		}
+	
+	// Build the opening tag with all its attributes intact.
+	let tagName = node.tagName.toLowerCase();
+	let attrString = '';
+	// Iterate through all attributes
+	for (let i = 0; i < node.attributes.length; i++) {
+		const attr = node.attributes[i];
+		attrString += ` ${attr.name}="${attr.value}"`;
+	}
+
+	let openingTag = `<${tagName}${attrString}>`;
+	let closingTag = `</${tagName}>`;
+
+	// If we've reached or exceeded the max depth, insert the marker
+	if (currentDepth >= maxDepth - 1) {
+	return `${openingTag}#rme${closingTag}`;
+	}
+
+	// Otherwise, process the child nodes recursively.
+	let childrenHTML = '';
+	node.childNodes.forEach(child => {
+	childrenHTML += trimElementWithPlaceholder(child, maxDepth, currentDepth + 1);
+	});
+
+	return `${openingTag}${childrenHTML}${closingTag}`;
+}
+
+function trimTarget(node){
+	let trimmedHtml = trimElementWithPlaceholder(node, 4);
+
+	if (trimmedHtml.length < 200) {
+		return trimmedHtml;
+	}
+
+	var purifyConfig = {
+		ALLOWED_TAGS: [
+		  'a', 'abbr', 'address', 'article', 'aside',
+		  'b', 'blockquote', 'br', 'button', 'caption',
+		  'cite', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+		  'hr', 'i', 'img', 'input', 'label', 'li', 'ol', 'p', 'q',
+		  'small', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td',
+		  'tfoot', 'th', 'thead', 'tr', 'ul', 'select', 'option', 'textarea',
+		  'svg', 'path'
+		],
+		ALLOWED_ATTR: [
+		  'id', 'class', 'href', 'src', 'alt', 'ota-use-interactive-target',
+		  'role', 'aria-label', 'aria-labelledby', 'aria-describedby',
+		  'placeholder', 'type', 'value', 'name', 'checked', 'selected'
+		]
+	};
+	return DOMPurify.sanitize(trimmedHtml, purifyConfig);
+}
+
+
+function trimChangedEventNode(node, max_depth = 3){
+	let trimmedHtml = trimElementWithPlaceholder(node, max_depth);
+
+	if (trimmedHtml.length < 200) {
+		return trimmedHtml;
+	}
+
+	const isWholeDocument = /^\s*<html\b/i.test(trimmedHtml);
+
+	var purifyConfig = {
+		WHOLE_DOCUMENT: isWholeDocument,
+		ALLOWED_TAGS: [
+		  'a', 'abbr', 'address', 'article', 'aside',
+		  'b', 'blockquote', 'br', 'button', 'caption',
+		  'cite', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+		  'hr', 'i', 'img', 'input', 'label', 'li', 'ol', 'p', 'q',
+		  'small', 'span', 'strong', 'sub', 'table', 'tbody', 'td',
+		  'tfoot', 'th', 'thead', 'tr', 'ul', 'select', 'option', 'textarea',
+		  'svg', 'path', 'html', 'header', 'body'
+		],
+		ALLOWED_ATTR: [
+		  'id', 'href', 'alt', 'ota-use-interactive-target',
+		  'role', 'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-hidden',
+		  'placeholder', 'type', 'value', 'name', 'checked', 'selected', 'disabled'
+		]
+	};
+	return DOMPurify.sanitize(trimmedHtml, purifyConfig);
+}
