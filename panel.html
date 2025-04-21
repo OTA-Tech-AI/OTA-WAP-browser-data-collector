@@ -14,7 +14,8 @@
 <body>
 <p class="status" title="Unable to contact content script. Try reloading the page.">(disconnected)</p>
 <nav>
-    <button class="button-primary record">Record</button>
+    <button class="button-primary record">Start Record</button>
+	<button class="record-pause" id="record-pause-button-1" disabled>Pause</button>
     <button class="clear">Clear</button>
     <button class="top hidden">Top</button>
 </nav>
@@ -54,16 +55,12 @@
     </table>
 </main>
 <aside class="intro">
-    <p>Click <em>"Record"</em> button below to start listening for DOM changes.</p>
+    <p>Click <em>"Start Record"</em> to start recording your WAP workflow.</p>
 
     <div class="social-buttons">
         <iframe
-            src="http://ghbtns.com/github-btn.html?user=kdzwinel&amp;repo=DOMListenerExtension&amp;type=watch&amp;count=true&amp;size=small"
+            src="http://ghbtns.com/github-btn.html?user=OTA-Tech-AI&amp;repo=OTA-WAP-browser-data-collector&amp;type=watch&amp;count=true&amp;size=small"
             style="background-color: transparent; border: none; overflow:hidden" width="90" height="20"></iframe>
-        <a href="https://twitter.com/share" class="twitter-share-button"
-           data-url="https://chrome.google.com/webstore/detail/domlistener/jlfdgnlpibogjanomigieemaembjeolj"
-           data-text="DOMListener Chrome Extension - monitor, browse and filter all DOM changes with ease."
-           data-count="horizontal">&nbsp;</a>
     </div>
 </aside>
 

@@ -21,10 +21,16 @@
             callCommand('domListenerExtension.highlightNode(' + nodeId + ')');
         },
         startRecording: function () {
-            callCommand('domListenerExtension.startListening()');
+            callCommand('domListenerExtension.startTaskRecording()');
         },
-        stopRecording: function () {
-            callCommand('domListenerExtension.stopListening()');
-        }
+        pauseRecording: function () {
+            callCommand('domListenerExtension.pauseTaskRecording()');
+        },
+		resumeRecording: function () {
+			callCommand('domListenerExtension.resumeTaskRecording()');
+		},
+		finishRecording: function () {
+			callCommand('domListenerExtension.finishTaskRecording()');
+		}
     };
 })();

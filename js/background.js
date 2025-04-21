@@ -1,21 +1,18 @@
 (function () {
     "use strict";
 
+	const taskIdMap = {};
+	const lastPageGoToTimestamps = {};
 
-	function getTabIdPageSanitizedHTMLRequest(tabId){	
-		// Send a message to the content script in this tab to get the page content.
-		chrome.tabs.sendMessage(tabId, { type: 'get-page-content' }, function(response) {
-			if (chrome.runtime.lastError) {
-				console.error("[OTA DOM Background]: Error retrieving page content:", chrome.runtime.lastError);
-				return;
-			}
-			if (response && response.sanitizedPageHTML) {
-				// return response.sanitizedPageHTML;
-				pageContentStore[tabId] = response.sanitizedPageHTML;
-				console.log("[OTA DOM Background]: Update finished on the content of page on tab ID: ", tabId);
-			}
-			// return null;
-		});
+	function generateTaskId() {
+		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+					+ 'abcdefghijklmnopqrstuvwxyz'
+					+ '0123456789';
+		let id = '';
+		for (let i = 0; i < 16; i++) {
+		  id += chars.charAt(Math.floor(Math.random() * chars.length));
+		}
+		return id;
 	}
 
 	function sendDataToCollectorServer(data){
@@ -114,9 +111,9 @@
     }
 
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-		console.log("Background received action:", message.summaryEvent);
 		const tabId = sender.tab.id;
-		if (message.type === 'send-summary-event' || message.type === 'submit') {
+		if (message.type === 'send-summary-event' ||
+			message.type === 'submit') {
 			sendDataToCollectorServer(message.summaryEvent);
 			return true;
 		}
@@ -124,27 +121,15 @@
 			const lastTimestamp = lastPageGoToTimestamps[tabId];
 			const summaryEvent = message.summaryEvent;
 			const currentTimestamp = summaryEvent.actionTimestamp;
-			if (currentTimestamp - lastTimestamp < 500) { // if less than 100 ms passed, ignore duplicate
+			if (currentTimestamp - lastTimestamp < 500) { // if less than 500 ms passed, ignore duplicate
 				console.log(`[OTA DOM Background]: input blur after clicking on link, ignored for tab ${tabId}`);
 				return false;
 			}
 			sendDataToCollectorServer(message.summaryEvent);
 			return true;
 		}
-	});
+	});	
 
-	// chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-	// 	if (message.type === 'submit') {
-	// 	  console.log("Background received submit event data:", message.summaryEvent);
-	// 	  // Process the event data as needed.
-	// 	  sendResponse({ status: 'success' });
-	// 	}
-	// 	return false;
-	//   });
-
-	const lastPageGoToTimestamps = {};
-
-	// Listen for messages from content scripts.
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 		if (message.type === 'page-go-to') {
 			const tabId = sender.tab.id;
@@ -156,7 +141,6 @@
 
 				if (lastPageGoToTimestamps[tabId] !== undefined) {
 				  const lastTimestamp = lastPageGoToTimestamps[tabId];
-
 				  if (currentTimestamp - lastTimestamp < 500) { // if less than 100 ms passed, ignore duplicate
 					console.log(`[OTA DOM Background]: Duplicate click data ignored for tab ${tabId}`);
 					return false;
@@ -165,32 +149,52 @@
 				// Update the last click timestamp for the tab.
 				lastPageGoToTimestamps[tabId] = currentTimestamp;
 			}
-
 			sendDataToCollectorServer(clickData);
-
 			return true;
 		}
 		// Return false if no asynchronous response is needed.
 		return false;
 	});
 
-	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-		if (message.type === 'update-page-content') {
-			const tabId = sender.tab.id;
+	chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
+		const tabId = sender.tab.id;
+		switch (message.type) {
+		  case 'update-page-content': {
 			pageContentStore[tabId] = message.sanitizedPageHTML;
-			console.log(`[OTA DOM Background]: Updated page content for tab ${tabId}`);
-			sendResponse({ status: 'success' });
-		} else if (message.type === 'delete-page-content') {
-			const tabId = sender.tab.id;
+			sendResponse({ status: 'success', taskId: taskIdMap[tabId] });
+			break;
+		  }
+		  case 'delete-page-content': {
 			delete pageContentStore[tabId];
 			console.log(`[OTA DOM Background]: Delete page content for tab ${tabId}`);
 			sendResponse({ status: 'success' });
+			break;
+		  }
+		  case 'task-start': {
+			const newId = generateTaskId();
+			taskIdMap[tabId]      = newId;
+			pageContentStore[tabId] = message.summaryEvent.pageHTMLContent;
+			message.summaryEvent.taskId = newId;
+			sendDataToCollectorServer(message.summaryEvent);
+	  
+			sendResponse({ status: 'success', taskId: newId });
+			break;
+		  }
+		  case 'task-finish': {
+			sendDataToCollectorServer(message.summaryEvent);
+			delete taskIdMap[tabId];
+			sendResponse({ status: 'success' });
+			break;
+		  }
+		  default:
+			break;
 		}
 		return false;
-	});
+	  });
 
 	chrome.tabs.onRemoved.addListener(function(tabId) {
 		delete pageContentStore[tabId];
+		delete taskIdMap[tabId];
 	});
 
 	chrome.webNavigation.onCommitted.addListener(function(details) {
@@ -198,16 +202,19 @@
 
 		// if we don't find the pageContentStore for current tabId, it means
 		// users do not switch on the recording, so ignore this action
-		if(!pageContentStore[tabId]){
-			return false;
-		}
+		if(!pageContentStore[tabId]){ return false; }
+
 		// Optionally, determine if this navigation was caused by a back button
 		if (details.transitionQualifiers && details.transitionQualifiers.includes('forward_back')) {
 			console.log("[OTA DOM Background]: GO BACK or GO FORWARD navigation detected in tab:", tabId);
 			var summaryEvent = {
+				taskId: taskIdMap[tabId],
 				type: "go-back-or-forward",
 				actionTimestamp: Date.now(),
-				eventTarget: "",
+				eventTarget: {
+					type: "navigation",
+					target: details.url
+				},
 				allEvents: "",
 				pageHTMLContent: pageContentStore[tabId]
 			};
@@ -215,13 +222,4 @@
 		}
 	  });
 
-	chrome.webNavigation.onCompleted.addListener(function(details) {
-		const tabId = details.tabId;
-		if(!pageContentStore[tabId]){
-			return false;
-		}
-		if (details.frameId === 0) {
-			getTabIdPageSanitizedHTMLRequest(tabId);
-		  }
-	  });
 })();

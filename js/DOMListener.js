@@ -8,9 +8,10 @@
 
 	let clickTimer = null;
 	let doubleClicked = false;
+	let pageContentIntervalId = null;
+	let taskId = null;
 	const CLICK_DELAY = 500; // delay in ms to distinguish single vs double clic
 
-	// --- NEW: Buffer for mutation records ---
 	var mutationBuffer = [];
 	var BUFFER_WINDOW = 1000; // milliseconds for before/after user action
 
@@ -99,14 +100,12 @@
 	  
 		switch (node.nodeType) {
 		  case Node.ELEMENT_NODE:
-			// Return the entire HTML structure, including the node's children
-			return trimChangedEventNode(node, 5);//trimElementWithPlaceholder(node, 3);//node.cloneNode(true).outerHTML;
+			return trimChangedEventNode(node, 5);
 		  case Node.TEXT_NODE:
-			return node.nodeValue; // or node.textContent.trim() if you want to trim
+			return node.nodeValue;
 		  case Node.COMMENT_NODE:
 			return '<!-- ' + node.nodeValue + ' -->';
 		  default:
-			// For other node types (e.g., document, documentFragment, etc.)
 			return '';
 		}
 	  }
@@ -132,7 +131,6 @@
         };
     }
 
-    // --- Updated logEvent remains the same ---
     function logEvent(event) {
         event.date = Date.now();
 
@@ -165,7 +163,6 @@
         }
     }
 
-    // --- NEW: onMutation now only buffers the mutation records ---
     function onMutation(records) {
         var now = Date.now();
         for (var i = 0, l = records.length; i < l; i++) {
@@ -189,7 +186,6 @@
         }
     }
 
-    // --- Helper to transform a mutation record into a loggable event ---
     function transformRecord(record) {
 		function isValidSelector(selector) {
 			const nonValidSelectors = new Set(['NOSCRIPT', 'SCRIPT']);
@@ -262,23 +258,61 @@
     }
 
 	function sendPageContentUpdatetoBackground(status) {
-		if(status == "update"){
-			const sanitizedHTML = DOMPurify.sanitize(document.documentElement.outerHTML);
+
+		if (status == "update"){
 			chrome.runtime.sendMessage({
 			  type: 'update-page-content',
-			  sanitizedPageHTML: sanitizedHTML
+			  sanitizedPageHTML: getCurrentHTMLSanitized()
 			}, function(response) {
-			  console.log("Content script: Page content update request sent", response);
+				taskId = response.taskId;
 			});
-		} else if (status == "delete"){
+		}
+		else if (status == "delete"){
 			chrome.runtime.sendMessage({
 				type: 'delete-page-content'
 			  }, function(response) {
 				console.log("Content script: Page content delete request sent", response);
 			  });
 		}
-	  }
-
+		else if (status === "task-start") {
+			var summaryEvent = {
+				taskId: taskId,
+				type: "task-start",
+				actionTimestamp: Date.now(),
+				eventTarget: {},
+				allEvents: [{
+					type: "task-start",
+					current_url: window.location.href
+				}],
+				pageHTMLContent: getCurrentHTMLSanitized()
+			};
+			chrome.runtime.sendMessage({
+			  type: 'task-start',
+			  summaryEvent: summaryEvent
+			}, function(response) {
+				taskId = response.taskId;
+			  console.log("Content script: Task start message sent", response);
+			});
+		  } else if (status === "task-finish"){
+			var summaryEvent = {
+				taskId: taskId,
+				type: "task-finish",
+				actionTimestamp: Date.now(),
+				eventTarget: {},
+				allEvents: [{
+					type: "task-finish",
+					current_url: window.location.href
+				}],
+				pageHTMLContent: getCurrentHTMLSanitized()
+			};
+			  chrome.runtime.sendMessage({
+				type: 'task-finish',
+				summaryEvent: summaryEvent
+			}, function(response) {
+				console.log("Content script: Task finish message sent", response);
+			  });
+		  }
+	}
 
 	function filterValidEvents(allEvents) {
 		return allEvents.filter(event => {
@@ -334,7 +368,6 @@
 		return DOMPurify.sanitize(visibleHTML, config);
 	}
 
-    // --- NEW: User Action Handler ---
     function handleUserAction(event) {
 
 		if (CheckIsClickOnInputOrLabel(event)) {
@@ -404,6 +437,7 @@
 			}
 
 			var summaryEvent = {
+				taskId: taskId,
 				type: event.type,
 				actionTimestamp: actionTime,
 				eventTarget: actionTarget,
@@ -454,6 +488,7 @@
 			var sanitizedPageHTML = getCurrentHTMLSanitized();
 
 			var summaryEvent = {
+				taskId: taskId,
 				type: event.type,
 				actionTimestamp: Date.now(),
 				eventTarget: actionTarget,
@@ -469,13 +504,6 @@
 		  return true;
 		}
 		return false;
-	}
-
-	function handleGetPageContent(message, sender, sendResponse) {
-	if (message.type === 'get-page-content') {
-		var sanitizedPageHTML = getCurrentHTMLSanitized();
-		sendResponse({ sanitizedPageHTML: sanitizedPageHTML });
-	}
 	}
 
 	function CheckIsClickOnInputOrLabel(event){
@@ -499,10 +527,9 @@
 				console.log("Clicked label but no associated input found:", event.target);
 			  }
 			} else {
-			  // For input, textarea, or contenteditable elements, handle them directly.
 			  handleInputClick(event);
 			}
-			return true; // End processing so that no further click handling occurs.
+			return true;
 		  }
 		  return false;
 	}
@@ -511,12 +538,9 @@
 		const element = event.target;
 		const uid = getUniqueIdentifierForInput(element);
 		window.OTAinputFieldValues[uid] = element.value;
-		console.log("Input clicked and stored:", uid, element.value);
+		console.log("[OTA Record] Input clicked and stored:", uid, element.value);
 	}
 
-
-
-	// "click" listener which will be delayed.
 	function debouncedClickHandler(event) {
 		// If a click occurs, clear any existing timer.
 		if (clickTimer) {
@@ -536,7 +560,6 @@
 		}, CLICK_DELAY);
 	}
 
-	// "dblclick" listener.
 	function dblClickHandler(event) {
 		// Mark that a double click occurred.
 		doubleClicked = true;
@@ -550,54 +573,60 @@
 		handleUserAction(event);
 	}
 
-
 	function submitHandler(event){
 		// Prevent the default submission if desired:
 		// event.preventDefault();
-	  
-		// The target of the submit event is the form element.
+
 		let target = event.target;
-	  
-		// Build a summary object for the form similar to what you do for links.
+		 const formData = new FormData(target);
+		 const formValues = {};
+		 formData.forEach((value, key) => {
+		   formValues[key] = value;
+		});
+
+		let submitButtonInfo = null;
+		if (event.submitter) {
+		  submitButtonInfo = {
+			tag: event.submitter.tagName.toLowerCase(),
+			id:  event.submitter.id    || null,
+			name: event.submitter.name || null,
+			value: event.submitter.value || null,
+			outerHTML: nodeToHTMLString(event.submitter)
+		  };
+		}
+
 		var actionTarget = {
 		  type: event.type,
-		  target: nodeToHTMLString(target), // full HTML representation of the form
+		  target: nodeToHTMLString(target),
 		  targetId: target.id,
 		  targetClass: target.className
 		};
-	  
-		// Optionally, if you have similar functions for trimming and sanitizing,
-		// you can call them. For example, if you want to mark the target,
-		// then trim it:
+
 		target.setAttribute("ota-use-interactive-target", "1");
 		actionTarget.target = trimTarget(target);
-	  
-		// Get the entire current page HTML, sanitized.
-		var sanitizedPageHTML = getCurrentHTMLSanitized();
-	  
-		// Build the summaryEvent object in the same structure as your link click handler.
+
 		var summaryEvent = {
+		  taskId: taskId,
 		  type: event.type,
 		  actionTimestamp: Date.now(),
 		  eventTarget: actionTarget,
-		  allEvents: {},  // Customize if you have additional events or data to attach.
-		  pageHTMLContent: sanitizedPageHTML
+		  allEvents: [{
+			type: "form-submit",
+			formValues: formValues,
+		  	submitter:  submitButtonInfo
+		  }],
+		  pageHTMLContent: getCurrentHTMLSanitized()
 		};
-	  
-		// Send the summary event to the background script.
+
 		chrome.runtime.sendMessage({
 		  type: 'submit',
 		  summaryEvent: summaryEvent
 		}, function(response) {
 		  console.log("Response from background:", response);
 		});
-	  
 		console.log("Content script: Form submit captured", summaryEvent);
-	  
-		// Optionally, you can remove the attribute after processing.
 		target.removeAttribute("ota-use-interactive-target");
 	}
-
 
     function findShadowRoots(node, list) {
         list = list || [];
@@ -625,7 +654,7 @@
 		const newValue = element.value;
 		
 		if (oldValue !== newValue) {
-			// Send a message to the background with the updated value
+		// Send a message to the background with the updated value
 		console.log("Input value changed:", event);
 
 		let target = event.target;
@@ -641,6 +670,7 @@
 		actionTarget.target = trimTarget(target);
 
 		var summaryEvent = {
+			taskId: taskId,
 			type: "input-change",
 			actionTimestamp: Date.now(),
 			eventTarget: actionTarget,
@@ -658,10 +688,10 @@
 	  
 	// When starting to listen, attach the blur event only to text inputs:
 	function addTextFieldBlurListeners() {
-	const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
-	textInputs.forEach(input => {
-		input.addEventListener('blur', handleInputBlur);
-	});
+		const textInputs = document.querySelectorAll("input[type='text'], textarea, [contenteditable='true']");
+		textInputs.forEach(input => {
+			input.addEventListener('blur', handleInputBlur);
+		});
 	}
 	  
 	function removeTextFieldBlurListeners() {
@@ -671,48 +701,57 @@
 	});
 	}
 
+	function setupListeners(task_start=false){
+		observer.disconnect();
+		//observe the main document
+		observer.observe(document, observerSettings);
+		//observe all shadow roots
+		findShadowRoots(document).forEach(function (shadowRoot) {
+			observer.observe(shadowRoot, observerSettings);
+		});
+
+		document.addEventListener('click', handleUserClickLink);
+		document.addEventListener('click', debouncedClickHandler);
+		document.addEventListener('dblclick', dblClickHandler);
+		document.addEventListener('submit', submitHandler);
+		window.addEventListener('popstate', handleUserAction);
+		addTextFieldBlurListeners();
+		if(task_start){ sendPageContentUpdatetoBackground("task-start"); }
+		pageContentIntervalId = setInterval(() => { sendPageContentUpdatetoBackground("update"); }, 500);
+		console.log("Started listening and page-content polling every 500ms");
+	}
+
+	function removeListeners(task_finish=false){
+		if(task_finish){ sendPageContentUpdatetoBackground("task-finish"); }
+		observer.disconnect();
+		document.removeEventListener('click', handleUserClickLink);
+		document.removeEventListener('click', debouncedClickHandler);
+		document.removeEventListener('dblclick', dblClickHandler);
+		document.removeEventListener('submit', submitHandler);
+		window.removeEventListener('popstate', handleUserAction);
+		removeTextFieldBlurListeners();
+
+		if (pageContentIntervalId  != null) {
+			clearInterval(pageContentIntervalId );
+			pageContentIntervalId = null;
+		}
+
+		sendPageContentUpdatetoBackground("delete");
+		console.log("Stopped listening and cleared page-content polling");
+	}
+
     if (!window.domListenerExtension) {
         window.domListenerExtension = {
-            startListening: function () {
-                observer.disconnect();
-
-                //observe the main document
-                observer.observe(document, observerSettings);
-
-                //observe all shadow roots
-                findShadowRoots(document).forEach(function (shadowRoot) {
-                    observer.observe(shadowRoot, observerSettings);
-                });
-
-				document.addEventListener('click', handleUserClickLink);
-				document.addEventListener('click', debouncedClickHandler);
-				document.addEventListener('dblclick', dblClickHandler);
-				document.addEventListener('submit', submitHandler);
-				addTextFieldBlurListeners();
-				window.addEventListener('popstate', handleUserAction);
-				chrome.runtime.onMessage.addListener(handleGetPageContent);
-				sendPageContentUpdatetoBackground("update");
-            },
-            stopListening: function () {
-                observer.disconnect();
-				document.removeEventListener('click', handleUserClickLink);
-				document.removeEventListener('click', debouncedClickHandler);
-				document.removeEventListener('dblclick', dblClickHandler);
-				document.removeEventListener('submit', submitHandler);
-				removeTextFieldBlurListeners();
-				window.removeEventListener('popstate', handleUserAction);
-				chrome.runtime.onMessage.removeListener(handleGetPageContent);
-				sendPageContentUpdatetoBackground("delete");
-            },
-            getNode: function (nodeId) {
-                return nodeRegistry[nodeId];
-            },
+            startTaskRecording: function () { setupListeners(true); },
+            pauseTaskRecording: function () { removeListeners(); },
+			resumeTaskRecording: function(){ setupListeners(); },
+			finishTaskRecording: function () { removeListeners(true); },
+			getNode: function (nodeId) { return nodeRegistry[nodeId]; },
             highlightNode: function (nodeId) {
                 var node = this.getNode(nodeId);
-
                 scrollIntoView(node);
                 highlightNode(node);
-            }
+            },
         };
     }
 })();

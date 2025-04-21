@@ -222,6 +222,19 @@ input[type="button"].button-primary:focus {
   background-color: #1EAEDB;
   border-color: #1EAEDB; }
 
+  .record-pause:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+  }
+  .record-pause {
+	color: #E1E1E1;
+	background-color: rgb(246, 73, 73);
+  }
+
+  .record-resume {
+	color: #E1E1E1;
+	background-color: rgb(239, 155, 0);
+  }
 
 /* Forms
 –––––––––––––––––––––––––––––––––––––––––––––––––– */

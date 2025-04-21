@@ -4,6 +4,7 @@
     var statusElem = document.querySelector('.status');
     var clearBtn = document.querySelector('.clear');
     var recordBtn = document.querySelector('.record');
+	var pauseResumeBtn = document.querySelector('#record-pause-button-1');
     var topBtn = document.querySelector('.top');
     var table = document.querySelector('.events');
     var intro = document.querySelector('.intro');
@@ -12,16 +13,22 @@
     var eventTable = new EventTable(table);
 
     var recording = false;
+	var paused = false;
 
-    recordBtn.addEventListener('click', function () {
+	// Initially disable the Task Finish button
+	pauseResumeBtn.disabled = true;
+
+	function recordBtnHandler(){
         recording = !recording;
-
-        recordBtn.innerText = recording ? 'Stop' : 'Record';
+        recordBtn.innerText = recording ? 'Finish Record' : 'Start Record';
+		pauseResumeBtn.disabled = !recording;
 
         if (recording) {
             ContentScriptProxy.startRecording();
         } else {
-            ContentScriptProxy.stopRecording();
+            ContentScriptProxy.finishRecording();
+			paused = false;
+			pauseResumeBtn.innerText = 'Pause';
         }
 
         if (intro.style.display !== 'none') {
@@ -34,7 +41,20 @@
                 intro.style.display = 'none';
             };
         }
-    });
+	}
+    recordBtn.addEventListener('click', recordBtnHandler);
+
+	pauseResumeBtn.addEventListener('click', function () {
+		if (!recording) return;
+		paused = !paused;
+		pauseResumeBtn.innerText = paused ? 'Resume' : 'Pause';
+		pauseResumeBtn.className = paused ? 'record-resume' : 'record-pause';
+		if (paused) {
+			ContentScriptProxy.pauseRecording();
+        } else {
+            ContentScriptProxy.resumeRecording();
+        }
+	});
 
     clearBtn.addEventListener('click', function () {
         eventTable.clear();
@@ -81,7 +101,7 @@
             eventTable.clear();
 
             if (recording) {
-                ContentScriptProxy.startRecording();
+                ContentScriptProxy.resumeRecording();
             }
         } else if (message.type === 'disconnected') {
             statusElem.classList.remove('connected');
