@@ -573,60 +573,107 @@
 		handleUserAction(event);
 	}
 
-	function submitHandler(event){
-		// Prevent the default submission if desired:
-		// event.preventDefault();
+	function getSimpleSelector(el) {
+		if (el.id) return `#${el.id}`;
+		if (el.name) return `${el.tagName.toLowerCase()}[name="${el.name}"]`;
+		return el.tagName.toLowerCase();
+	  }
 
-		let target = event.target;
-		 const formData = new FormData(target);
-		 const formValues = {};
-		 formData.forEach((value, key) => {
-		   formValues[key] = value;
-		});
-
-		let submitButtonInfo = null;
-		if (event.submitter) {
-		  submitButtonInfo = {
-			tag: event.submitter.tagName.toLowerCase(),
-			id:  event.submitter.id    || null,
-			name: event.submitter.name || null,
-			value: event.submitter.value || null,
-			outerHTML: nodeToHTMLString(event.submitter)
+	function submitHandler(event) {
+		const form = event.target;                       // <form> element
+		const formData = new FormData(form);
+	  
+		// Build a detailed map: name → { value, selector, tag, type }
+		const detailedValues = {};
+	  
+		// Look at every possible control inside this form
+		form.querySelectorAll('input, select, textarea, button').forEach(el => {
+		  const name = el.name || el.id || null;         // give it a key
+		  if (!name) return;                             // skip unnamed controls
+	  
+		  // For checkboxes/radios you may want el.checked instead of value
+		  let rawValue = (el.type === 'checkbox' || el.type === 'radio')
+						  ? (el.checked ? el.value : null)
+						  : el.value;
+	  
+		  // Only store if this element contributed to the submission
+		  // (FormData will have the real list; this keeps them in sync)
+		  if (!formData.has(name)) return;
+	  
+		  detailedValues[name] = {
+			value:    rawValue,
+			selector: nodeToSelector ? nodeToSelector(el, form) : getSimpleSelector(el),
+			tag:      el.tagName.toLowerCase(),
+			type:     el.type || null
 		  };
-		}
-
-		var actionTarget = {
-		  type: event.type,
-		  target: nodeToHTMLString(target),
-		  targetId: target.id,
-		  targetClass: target.className
-		};
-
-		target.setAttribute("ota-use-interactive-target", "1");
-		actionTarget.target = trimTarget(target);
-
-		var summaryEvent = {
-		  taskId: taskId,
-		  type: event.type,
+		});
+	  
+		// Build your normal summaryEvent…
+		const summaryEvent = {
+		  type:            event.type,
 		  actionTimestamp: Date.now(),
-		  eventTarget: actionTarget,
-		  allEvents: [{
-			type: "form-submit",
-			formValues: formValues,
-		  	submitter:  submitButtonInfo
-		  }],
+		  eventTarget:     { tag: 'form', selector: nodeToSelector ? nodeToSelector(form, null) : 'form' },
+		  formDetails:     detailedValues,
 		  pageHTMLContent: getCurrentHTMLSanitized()
 		};
+	  
+		chrome.runtime.sendMessage({ type: 'submit', summaryEvent });
+	  }
 
-		chrome.runtime.sendMessage({
-		  type: 'submit',
-		  summaryEvent: summaryEvent
-		}, function(response) {
-		  console.log("Response from background:", response);
-		});
-		console.log("Content script: Form submit captured", summaryEvent);
-		target.removeAttribute("ota-use-interactive-target");
-	}
+	// function submitHandler(event){
+	// 	// Prevent the default submission if desired:
+	// 	// event.preventDefault();
+
+	// 	let target = event.target;
+	// 	 const formData = new FormData(target);
+	// 	 const formValues = {};
+	// 	 formData.forEach((value, key) => {
+	// 	   formValues[key] = value;
+	// 	});
+
+	// 	let submitButtonInfo = null;
+	// 	if (event.submitter) {
+	// 	  submitButtonInfo = {
+	// 		tag: event.submitter.tagName.toLowerCase(),
+	// 		id:  event.submitter.id    || null,
+	// 		name: event.submitter.name || null,
+	// 		value: event.submitter.value || null,
+	// 		outerHTML: nodeToHTMLString(event.submitter)
+	// 	  };
+	// 	}
+
+	// 	var actionTarget = {
+	// 	  type: event.type,
+	// 	  target: nodeToHTMLString(target),
+	// 	  targetId: target.id,
+	// 	  targetClass: target.className
+	// 	};
+
+	// 	target.setAttribute("ota-use-interactive-target", "1");
+	// 	actionTarget.target = trimTarget(target);
+
+	// 	var summaryEvent = {
+	// 	  taskId: taskId,
+	// 	  type: event.type,
+	// 	  actionTimestamp: Date.now(),
+	// 	  eventTarget: actionTarget,
+	// 	  allEvents: [{
+	// 		type: "form-submit",
+	// 		formValues: formValues,
+	// 	  	submitter:  submitButtonInfo
+	// 	  }],
+	// 	  pageHTMLContent: getCurrentHTMLSanitized()
+	// 	};
+
+	// 	chrome.runtime.sendMessage({
+	// 	  type: 'submit',
+	// 	  summaryEvent: summaryEvent
+	// 	}, function(response) {
+	// 	  console.log("Response from background:", response);
+	// 	});
+	// 	console.log("Content script: Form submit captured", summaryEvent);
+	// 	target.removeAttribute("ota-use-interactive-target");
+	// }
 
     function findShadowRoots(node, list) {
         list = list || [];
