@@ -4,6 +4,14 @@
 	const taskIdMap = {};
 	const lastPageGoToTimestamps = {};
 
+	let devtoolsPort = null;
+	let tabPagePort = null;
+	let eventList = []; // 存放所有的 Mutation events
+
+	chrome.action.onClicked.addListener((tab) => {
+		chrome.tabs.create({ url: chrome.runtime.getURL("Listener.html") });
+	});
+	
 	function generateTaskId() {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 					+ 'abcdefghijklmnopqrstuvwxyz'
@@ -38,7 +46,9 @@
             handleDevToolsConnection(port);
         } else if (port.name === 'content-script') {
             handleContentScriptConnection(port);
-        }
+        } else if (port.name == 'tab-page'){
+			handleTabPageConnection(port);
+		}
     });
 
     var devToolsPorts = {};
@@ -94,6 +104,9 @@
             if (devToolsPorts[tabId]) {
                 devToolsPorts[tabId].postMessage(message);
             }
+			if (tabPagePort){
+				tabPagePort.postMessage(message);
+			}
         };
 
         port.onMessage.addListener(messageListener);
@@ -109,6 +122,33 @@
             }
         });
     }
+
+	function handleTabPageConnection(port) {
+		console.log('[OTA DOM Background]: Tab page connected');
+	
+		tabPagePort = port;
+	
+		var messageListener = function (message, sender, sendResponse) {
+			console.log('[OTA DOM Background]: Tab page message', message);
+	
+			// 根据需要处理 Tab 页面主动发过来的消息（一般是控制指令，比如开始录制）
+			if (message.type === 'start-recording') {
+				// 可以处理开始录制的指令
+			}
+		};
+	
+		port.onMessage.addListener(messageListener);
+	
+		port.onDisconnect.addListener(function () {
+			console.log('[OTA DOM Background]: Tab page disconnected');
+			tabPagePort = null;
+			port.onMessage.removeListener(messageListener);
+		});
+	
+		// 通知 Tab 页面 "connected"
+		port.postMessage({ type: 'connected' });
+	}
+	
 
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
 		const tabId = sender.tab.id;
