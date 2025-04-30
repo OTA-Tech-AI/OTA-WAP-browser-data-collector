@@ -5,63 +5,148 @@
     var clearBtn = document.querySelector('.clear');
     var recordBtn = document.querySelector('.record');
 	var pauseResumeBtn = document.querySelector('#record-pause-button-1');
-    var topBtn = document.querySelector('.top');
     var table = document.querySelector('.events');
     var intro = document.querySelector('.intro');
 
-    var scrollHelper = new ScrollHelper(topBtn);
+	var taskInput   = document.querySelector('.task-description-input');
+	var taskIdDisplay   = document.querySelector('.task-description-task-id');
+	var taskLabel   = document.querySelector('.task-description-label');
+	var taskLabelStart   = document.querySelector('.task-description-start');
+	var taskVisibilityBtn = document.querySelector('#task-visibility-toggle-button');
+	var taskSection = document.querySelector('.task-description-section');
+
     var eventTable = new EventTable(table);
 
     var recording = false;
 	var paused = false;
+	var taskId = "";
 
 	// Initially disable the Task Finish button
 	pauseResumeBtn.disabled = true;
 
-	function recordBtnHandler(){
-        recording = !recording;
-        recordBtn.innerText = recording ? 'Finish Record' : 'Start Record';
-		pauseResumeBtn.disabled = !recording;
+	function showInput(clearValue = false) {
+		if (clearValue) taskInput.value = '';
+		taskInput.style.display = 'inline';
+		taskLabel.style.display = 'none';
+		taskIdDisplay.style.display = 'none';
+		taskLabelStart.style.display = 'none';
+	  }
+	  
+	  function showLabel(text) {
+		taskLabel.textContent = text;
+		taskInput.style.display = 'none';
+		taskLabel.style.display = 'inline';
+		taskIdDisplay.style.display = 'inline';
+		taskLabelStart.style.display = 'inline';
+	  }
 
-        if (recording) {
-            ContentScriptProxy.startRecording();
-        } else {
-            ContentScriptProxy.finishRecording();
-			paused = false;
-			pauseResumeBtn.innerText = 'Pause';
-        }
 
-        if (intro.style.display !== 'none') {
-            var player = intro.animate([
-                {opacity: 1},
-                {opacity: 0}
-            ], 300);
+	  taskInput.addEventListener('input', function() {
+		this.style.height = 'auto';
+		this.style.height = this.scrollHeight + 'px';
+	  });
 
-            player.onfinish = function () {
-                intro.style.display = 'none';
-            };
-        }
-	}
+	  function getCurrentTaskId(){
+		chrome.runtime.sendMessage({
+			type: 'get-task-id',
+			tabId: chrome.devtools.inspectedWindow.tabId
+		  }, function(response) {
+			  taskId = response.taskId;
+			  taskIdDisplay.innerText = "ID: " + taskId;
+		  });
+	  }
+
+	  function recordBtnHandler() {
+		// ======= RECORDING START =======
+		if (!recording) {
+		  const desc = taskInput.value.trim();
+		  /* 1. Block start if description empty */
+		  if (!desc) {
+			taskInput.classList.add('invalid');
+			taskInput.focus();
+			return;
+		  }
+		  taskInput.classList.remove('invalid');
+	  
+		  /* 2. Switch input → plain-text label */
+		  showLabel(desc);
+	  
+		  /* 3. Begin recording */
+		  ContentScriptProxy.startRecording(desc);
+		  setTimeout(() => { getCurrentTaskId(); }, 1000);
+		  recording = true;
+		  paused    = false;
+	  
+		  /* 4. Update buttons */
+		  recordBtn.innerText   = 'Finish Record';
+		  pauseResumeBtn.disabled = false;
+		  pauseResumeBtn.innerText = 'Pause';
+	  
+		  /* 5. Show the Hide/Show-Task toggle */
+		  taskVisibilityBtn.hidden = false;
+		  taskVisibilityBtn.innerText = 'Hide Task';
+		  taskSection.style.display   = 'block';   // Task visible by default
+		}
+	  
+		// ======= RECORDING FINISH =======
+		else {
+		  ContentScriptProxy.finishRecording();
+		  taskIdDisplay.innerText = '...';
+	  
+		  /* 1. Restore input field */
+		  showInput(true);            // clear value
+		  recording = false;
+		  paused    = false;
+	  
+		  /* 2. Update buttons */
+		  recordBtn.innerText   = 'Start Record';
+		  pauseResumeBtn.disabled = true;
+		  pauseResumeBtn.innerText = 'Pause';
+	  
+		  /* 3. Hide the Hide/Show-Task toggle, always show task input */
+		  taskVisibilityBtn.hidden = true;
+		  taskSection.style.display = 'block';
+		}
+	  
+		/* Optional intro fade-out (unchanged) */
+		if (intro.style.display !== 'none') {
+		  intro.animate([{ opacity: 1 }, { opacity: 0 }], 300)
+			   .onfinish = () => intro.style.display = 'none';
+		}
+	  }
+	
     recordBtn.addEventListener('click', recordBtnHandler);
+
+	taskVisibilityBtn.addEventListener('click', function () {
+		if (taskSection.style.display === 'none') {
+			taskSection.style.display = 'block';
+			taskVisibilityBtn.innerText = 'Hide Task';
+		} else {
+			taskSection.style.display = 'none';
+			taskVisibilityBtn.innerText = 'Show Task';
+		}
+	});
+
+	taskInput.addEventListener('input', () => {
+		taskInput.classList.remove('invalid');
+	});
 
 	pauseResumeBtn.addEventListener('click', function () {
 		if (!recording) return;
 		paused = !paused;
 		pauseResumeBtn.innerText = paused ? 'Resume' : 'Pause';
-		pauseResumeBtn.className = paused ? 'record-resume' : 'record-pause';
+		pauseResumeBtn.classList.toggle('record-resume', paused);
+		pauseResumeBtn.classList.toggle('record-pause',  !paused);	  
 		if (paused) {
 			ContentScriptProxy.pauseRecording();
         } else {
-            ContentScriptProxy.resumeRecording();
+            ContentScriptProxy.resumeRecording(taskLabel.textContent);
+			setTimeout(() => { getCurrentTaskId(); }, 1000);
         }
 	});
 
     clearBtn.addEventListener('click', function () {
         eventTable.clear();
-    });
-
-    topBtn.addEventListener('click', function () {
-        scrollHelper.scrollToTheTop();
     });
 
     // clicking on a node
@@ -80,7 +165,6 @@
     /**
      * BACKGROUND PAGE CONNECTION
      */
-
     function injectContentScript() {
         // Send the tab ID to the background page
         bgPageConnection.postMessage({
@@ -101,7 +185,8 @@
             eventTable.clear();
 
             if (recording) {
-                ContentScriptProxy.resumeRecording();
+                ContentScriptProxy.resumeRecording(taskLabel.textContent);
+				setTimeout(() => { getCurrentTaskId(); }, 1000);
             }
         } else if (message.type === 'disconnected') {
             statusElem.classList.remove('connected');

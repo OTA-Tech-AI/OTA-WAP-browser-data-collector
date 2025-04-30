@@ -10,6 +10,7 @@
 	let doubleClicked = false;
 	let pageContentIntervalId = null;
 	let taskId = null;
+	let taskDescription = "";
 	const CLICK_DELAY = 500; // delay in ms to distinguish single vs double clic
 
 	var mutationBuffer = [];
@@ -277,6 +278,7 @@
 		else if (status === "task-start") {
 			var summaryEvent = {
 				taskId: taskId,
+				taskDescription: taskDescription,
 				type: "task-start",
 				actionTimestamp: Date.now(),
 				eventTarget: {},
@@ -296,6 +298,7 @@
 		  } else if (status === "task-finish"){
 			var summaryEvent = {
 				taskId: taskId,
+				taskDescription: taskDescription,
 				type: "task-finish",
 				actionTimestamp: Date.now(),
 				eventTarget: {},
@@ -607,73 +610,29 @@
 			type:     el.type || null
 		  };
 		});
+
+		let target = event.target;
+		target.setAttribute("ota-use-interactive-target", "1");
+
+		var actionTarget = {
+			type: event.type,
+			target: trimTarget(target),
+			selector: nodeToSelector ? nodeToSelector(form, null) : 'form'
+		};
 	  
 		// Build your normal summaryEvent…
 		const summaryEvent = {
+		  taskId: taskId,
 		  type:            event.type,
 		  actionTimestamp: Date.now(),
-		  eventTarget:     { tag: 'form', selector: nodeToSelector ? nodeToSelector(form, null) : 'form' },
-		  formDetails:     detailedValues,
+		  eventTarget:     actionTarget,
+		  allEvents: detailedValues,
 		  pageHTMLContent: getCurrentHTMLSanitized()
 		};
 	  
 		chrome.runtime.sendMessage({ type: 'submit', summaryEvent });
+		target.removeAttribute("ota-use-interactive-target");
 	  }
-
-	// function submitHandler(event){
-	// 	// Prevent the default submission if desired:
-	// 	// event.preventDefault();
-
-	// 	let target = event.target;
-	// 	 const formData = new FormData(target);
-	// 	 const formValues = {};
-	// 	 formData.forEach((value, key) => {
-	// 	   formValues[key] = value;
-	// 	});
-
-	// 	let submitButtonInfo = null;
-	// 	if (event.submitter) {
-	// 	  submitButtonInfo = {
-	// 		tag: event.submitter.tagName.toLowerCase(),
-	// 		id:  event.submitter.id    || null,
-	// 		name: event.submitter.name || null,
-	// 		value: event.submitter.value || null,
-	// 		outerHTML: nodeToHTMLString(event.submitter)
-	// 	  };
-	// 	}
-
-	// 	var actionTarget = {
-	// 	  type: event.type,
-	// 	  target: nodeToHTMLString(target),
-	// 	  targetId: target.id,
-	// 	  targetClass: target.className
-	// 	};
-
-	// 	target.setAttribute("ota-use-interactive-target", "1");
-	// 	actionTarget.target = trimTarget(target);
-
-	// 	var summaryEvent = {
-	// 	  taskId: taskId,
-	// 	  type: event.type,
-	// 	  actionTimestamp: Date.now(),
-	// 	  eventTarget: actionTarget,
-	// 	  allEvents: [{
-	// 		type: "form-submit",
-	// 		formValues: formValues,
-	// 	  	submitter:  submitButtonInfo
-	// 	  }],
-	// 	  pageHTMLContent: getCurrentHTMLSanitized()
-	// 	};
-
-	// 	chrome.runtime.sendMessage({
-	// 	  type: 'submit',
-	// 	  summaryEvent: summaryEvent
-	// 	}, function(response) {
-	// 	  console.log("Response from background:", response);
-	// 	});
-	// 	console.log("Content script: Form submit captured", summaryEvent);
-	// 	target.removeAttribute("ota-use-interactive-target");
-	// }
 
     function findShadowRoots(node, list) {
         list = list || [];
@@ -789,9 +748,15 @@
 
     if (!window.domListenerExtension) {
         window.domListenerExtension = {
-            startTaskRecording: function () { setupListeners(true); },
+            startTaskRecording: function (desc) {
+				taskDescription = desc;
+				setupListeners(true);
+			},
             pauseTaskRecording: function () { removeListeners(); },
-			resumeTaskRecording: function(){ setupListeners(); },
+			resumeTaskRecording: function(desc){
+				taskDescription = desc;
+				setupListeners();
+			},
 			finishTaskRecording: function () { removeListeners(true); },
 			getNode: function (nodeId) { return nodeRegistry[nodeId]; },
             highlightNode: function (nodeId) {

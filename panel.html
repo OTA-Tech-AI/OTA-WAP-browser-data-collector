@@ -14,10 +14,21 @@
 <body>
 <p class="status" title="Unable to contact content script. Try reloading the page.">(disconnected)</p>
 <nav>
+	<section class="task-description-section">
+		<textarea
+			class="task-description-input"
+			placeholder="Describe your task here…"
+			rows="1"></textarea>
+		<span class="task-description-start" style="display:none;">Current task: </span>
+		<span class="task-description-task-id" style="display:none;">...</span>
+		<span class="task-description-label" style="display:none;"></span>
+	</section>
     <button class="button-primary record">Start Record</button>
 	<button class="record-pause" id="record-pause-button-1" disabled>Pause</button>
     <button class="clear">Clear</button>
-    <button class="top hidden">Top</button>
+	<button class="task-visibility-toggle"
+        id="task-visibility-toggle-button"
+        hidden>Hide Task</button>
 </nav>
 <main>
     <table class="events u-full-width">

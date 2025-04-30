@@ -111,13 +111,13 @@
     }
 
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-		const tabId = sender.tab.id;
 		if (message.type === 'send-summary-event' ||
 			message.type === 'submit') {
 			sendDataToCollectorServer(message.summaryEvent);
 			return true;
 		}
 		else if (message.type === 'input-value-changed'){
+			const tabId = sender.tab.id;
 			const lastTimestamp = lastPageGoToTimestamps[tabId];
 			const summaryEvent = message.summaryEvent;
 			const currentTimestamp = summaryEvent.actionTimestamp;
@@ -157,33 +157,41 @@
 	});
 
 	chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-		const tabId = sender.tab.id;
 		switch (message.type) {
 		  case 'update-page-content': {
+			const tabId = sender.tab.id;
 			pageContentStore[tabId] = message.sanitizedPageHTML;
 			sendResponse({ status: 'success', taskId: taskIdMap[tabId] });
 			break;
 		  }
 		  case 'delete-page-content': {
+			const tabId = sender.tab.id;
 			delete pageContentStore[tabId];
 			console.log(`[OTA DOM Background]: Delete page content for tab ${tabId}`);
 			sendResponse({ status: 'success' });
 			break;
 		  }
 		  case 'task-start': {
+			const tabId = sender.tab.id;
 			const newId = generateTaskId();
 			taskIdMap[tabId]      = newId;
+			console.log("2213421312");
 			pageContentStore[tabId] = message.summaryEvent.pageHTMLContent;
 			message.summaryEvent.taskId = newId;
 			sendDataToCollectorServer(message.summaryEvent);
-	  
 			sendResponse({ status: 'success', taskId: newId });
 			break;
 		  }
 		  case 'task-finish': {
+			const tabId = sender.tab.id;
 			sendDataToCollectorServer(message.summaryEvent);
 			delete taskIdMap[tabId];
 			sendResponse({ status: 'success' });
+			break;
+		  }
+		  case 'get-task-id': {
+			const tabId = message.tabId;
+			sendResponse({ status: 'success', taskId: taskIdMap[tabId] });
 			break;
 		  }
 		  default:

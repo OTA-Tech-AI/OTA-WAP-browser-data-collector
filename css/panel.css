@@ -220,3 +220,51 @@ Checkbox
 .checkbox.attribute-changed label {
     background: rgb(179,146,248);
 }
+
+.task-description-input {
+    width: 100%;
+    padding: 8px;
+    font-size: 14px;
+	min-height: 20px;
+	margin-bottom: 0;
+	resize: none;
+	overflow: hidden;
+	box-sizing: border-box;
+	line-height: 1.4;
+}
+
+.task-description-input.invalid {
+    border: 1px solid #e74c3c;
+}
+
+.task-description-section {
+	padding-bottom: 10px;
+}
+
+.task-description-label {
+	display: none; /* Default hidden */
+	font-size: 16px;
+	font-weight: bold;
+	margin-top: 10px;
+	margin-bottom: 100px;
+	padding: 5px 10px;
+	background-color: #f0f0f0;
+	color: #333;
+	border: 1px solid #ccc;
+	border-radius: 5px;
+	white-space: pre-wrap; /* Allow line breaks if task description is long */
+  }
+
+  .task-description-task-id {
+	display: none; /* Default hidden */
+	font-size: 16px;
+	font-weight: bold;
+	margin-top: 10px;
+	margin-bottom: 100px;
+	padding: 5px 10px;
+	background-color: hsl(52, 100%, 57%);
+	color: #333;
+	border: 1px solid #ccc;
+	border-radius: 5px;
+	white-space: pre-wrap; /* Allow line breaks if task description is long */
+  }

@@ -79,7 +79,6 @@
         this._count = this._tableBody.children.length;
 
         //FILTERS
-
         var thead = this._tableHead;
         var tbody = this._tableBody;
         var targetFilter = this._targetFilter;
