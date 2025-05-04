@@ -24,6 +24,62 @@
 	// Initially disable the Task Finish button
 	pauseResumeBtn.disabled = true;
 
+	var settingsBtn      = document.querySelector('.settings-btn');
+	var settingsPanel    = document.querySelector('.settings-panel');
+	var hostField        = document.getElementById('collector-host');
+	var portField        = document.getElementById('collector-port');
+	var saveSettingsBtn  = document.getElementById('settings-save');
+	var cancelSettingsBtn= document.getElementById('settings-cancel');
+	var statusMsg        = document.getElementById('settings-status');
+
+	function loadSettingsToUI() {
+		chrome.storage.sync.get(
+		  { collectorHost: '127.0.0.1', collectorPort: 4934 },
+		  ({ collectorHost, collectorPort }) => {
+			hostField.value = collectorHost;
+			portField.value = collectorPort;
+		  }
+		);
+	  }
+
+	function saveSettingsFromUI() {
+		const host = hostField.value.trim() || '127.0.0.1';
+		const port = parseInt(portField.value, 10) || 4934;
+	  
+		chrome.storage.sync.set(
+		  { collectorHost: host, collectorPort: port },
+		  () => {
+			chrome.runtime.sendMessage({ type: 'collector-settings-updated' });
+			statusMsg.style.display = 'inline';
+			setTimeout(() => statusMsg.style.display = 'none', 1500);
+		  }
+		);
+	  }
+
+	  function showSettingsPanel(show) {
+		if (show) {
+		  loadSettingsToUI();
+		  settingsPanel.classList.remove('hidden');
+		  document.querySelector('main').classList.add('hidden');
+		} else {
+		  settingsPanel.classList.add('hidden');
+		  document.querySelector('main').classList.remove('hidden');
+		}
+	  }
+
+	  /* Open settings */
+	  settingsBtn.addEventListener('click', () => showSettingsPanel(true));
+
+	  /* Save & close */
+	  saveSettingsBtn.addEventListener('click', () => {
+		saveSettingsFromUI();
+		showSettingsPanel(false);
+	  });
+
+	  /* Cancel just closes */
+	  cancelSettingsBtn.addEventListener('click', () => showSettingsPanel(false));
+
+
 	function showInput(clearValue = false) {
 		if (clearValue) taskInput.value = '';
 		taskInput.style.display = 'inline';

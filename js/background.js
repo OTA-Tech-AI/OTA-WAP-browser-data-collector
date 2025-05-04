@@ -3,6 +3,7 @@
 
 	const taskIdMap = {};
 	const lastPageGoToTimestamps = {};
+	let cachedCollectorURL = null;
 
 	function generateTaskId() {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -15,22 +16,42 @@
 		return id;
 	}
 
-	function sendDataToCollectorServer(data){
-		// Optionally send a response back.
-		fetch('http://127.0.0.1:4934/action-data', {
+	function getCollectorURL() {
+	  if (cachedCollectorURL) return Promise.resolve(cachedCollectorURL);
+	
+	  return new Promise((resolve) => {
+		chrome.storage.sync.get(
+		  { collectorHost: '127.0.0.1', collectorPort: 4934 },
+		  ({ collectorHost, collectorPort }) => {
+			cachedCollectorURL = `http://${collectorHost}:${collectorPort}/action-data`;
+			resolve(cachedCollectorURL);
+		  }
+		);
+	  });
+	}
+	
+	function sendDataToCollectorServer(payload) {
+	  return getCollectorURL()
+		.then((url) => {
+			console.log(url)
+		  return fetch(url, {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(data)
-			})
-			.then(response => response.json())
-			.then(data => {
-			console.log("[OTA DOM Background]: Data sent to server successfully:", data);
-			})
-			.catch(err => {
-			console.error("[OTA DOM Background]: Error sending data to server:", err);
-			});
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(payload),
+			keepalive: true              // allow send during service‑worker shutdown
+		  });
+		})
+		.then(async (resp) => {
+		  const json = await resp.json().catch(() => ({}));
+		  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+		  console.log('[OTA DOM Background] sent OK:', json);
+		  return json;
+		})
+		.catch((err) => {
+		  console.error('[OTA DOM Background] send failed:', err);
+		  // Re‑throw so callers can handle if they want
+		  throw err;
+		});
 	}
 
     chrome.runtime.onConnect.addListener(function (port) {
@@ -127,7 +148,10 @@
 			}
 			sendDataToCollectorServer(message.summaryEvent);
 			return true;
-		}
+		} else if (message.type === 'collector-settings-updated') {
+			cachedCollectorURL = null;
+			console.log('[OTA DOM Background] cache cleared after settings update');
+		  }
 	});	
 
 	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {

@@ -59,12 +59,38 @@
                 <input type="text" placeholder="filter" class="target-filter"/>
                 Target
             </th>
-            <th>Details</th>
+            <th>
+				Details
+			</th>
+			<th>
+				<button class="settings-btn">Settings</button>
+				<span id="settings-status" style="display:none; color:green;">Saved ✔</span>
+			</th>
         </tr>
         </thead>
         <tbody></tbody>
     </table>
 </main>
+
+<!-- Settings panel (initially hidden) -->
+<section class="settings-panel hidden">
+	<h5>Collector Server</h5>
+  
+	<label>
+	  Host
+	  <input type="text" id="collector-host" placeholder="127.0.0.1">
+	</label>
+  
+	<label>
+	  Port
+	  <input type="number" id="collector-port" min="1" max="65535" placeholder="4934">
+	</label>
+  
+	<button id="settings-save"  class="button-primary">Save</button>
+	<button id="settings-cancel"               >Cancel</button>
+	<hr>
+  </section>
+  
 <aside class="intro">
     <p>Click <em>"Start Record"</em> to start recording your WAP workflow.</p>
 
