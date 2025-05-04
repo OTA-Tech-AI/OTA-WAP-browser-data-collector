@@ -8,6 +8,27 @@ const DOM_CACHE = {
   };
 
 const OTA_INPUT_ELEMENT_UNIQUE_ID_PREFIX = "ota-input-field-element-id"
+const CREDIT_CARD = /\b\d{13,19}\b/g;            // 13–19 consecutive digits
+const SSN         = /\b\d{3}[- ]?\d{2}[- ]?\d{4}\b/g;
+const EMAIL       = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b/gi;
+let MASK_DATA = false;
+
+const SENSITIVE_FIELD_NAMES = [
+	'password','pass','pwd',
+	'ssn','social','credit','card','cc',
+	'iban','account','routing','balance'
+  ];
+
+chrome.storage.sync.get({ maskSensitiveData: false }, ({ maskSensitiveData }) => {
+	MASK_DATA = !!maskSensitiveData;
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+	if (area === 'sync' && 'maskSensitiveData' in changes) {
+		MASK_DATA = !!changes.maskSensitiveData.newValue;
+		console.log("[OTA info]: Mask sensitive data: ", MASK_DATA);
+	}
+});
 
 /**
  * Searches up to maxDepth levels upward and downward from a target node
@@ -218,6 +239,9 @@ function getVisibleHTML(viewportExpansion = 0) {
       clone.appendChild(clonedChild);
     }
   });
+
+  if (MASK_DATA) { maskNode(clone); }
+
   return clone.outerHTML;
 }
 
@@ -332,3 +356,54 @@ function trimChangedEventNode(node, max_depth = 3){
 	};
 	return DOMPurify.sanitize(trimmedHtml, purifyConfig);
 }
+
+function maskString(str) {
+	return str
+	  .replace(CREDIT_CARD,  '[CARD]')
+	  .replace(SSN,          '[SSN]')
+	  .replace(EMAIL,        '[EMAIL]');
+}
+
+function maskNode(node) {
+	if (node.nodeType === Node.TEXT_NODE) {
+	  node.textContent = maskString(node.textContent);
+	  return;
+	}
+  
+	if (node.nodeType !== Node.ELEMENT_NODE) return;
+  
+	// ----- <input>, <textarea>, etc. -----
+	if (['INPUT','TEXTAREA'].includes(node.tagName)) {
+	  const type = (node.getAttribute('type') || '').toLowerCase();
+	  const name = (node.getAttribute('name') || '').toLowerCase();
+  
+	  const looksSensitive =
+		type === 'password' ||
+		SENSITIVE_FIELD_NAMES.some(key => name.includes(key));
+  
+	  if (looksSensitive) {
+		node.setAttribute('value',  '[MASKED]');
+		node.value = '[MASKED]';          // for completeness
+	  } else if (node.value || node.getAttribute('value')) {
+		const clean = maskString(node.value || node.getAttribute('value') || '');
+		node.setAttribute('value', clean);
+		node.value = clean;
+	  }
+	}
+  
+	// ----- attributes on any element -----
+	for (const attr of [...node.attributes]) {
+	  if (!attr.value) continue;
+	  const lowerName = attr.name.toLowerCase();
+  
+	  // mask password‑ish attributes or just run regex cleaner
+	  if (lowerName === 'value' || lowerName === 'placeholder' ||
+		  lowerName.startsWith('data-') ||
+		  SENSITIVE_FIELD_NAMES.some(k => lowerName.includes(k))) {
+		node.setAttribute(attr.name, maskString(attr.value));
+	  }
+	}
+  
+	// recurse children
+	node.childNodes.forEach(maskNode);
+  }

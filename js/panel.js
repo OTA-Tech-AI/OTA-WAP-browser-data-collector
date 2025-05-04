@@ -31,13 +31,15 @@
 	var saveSettingsBtn  = document.getElementById('settings-save');
 	var cancelSettingsBtn= document.getElementById('settings-cancel');
 	var statusMsg        = document.getElementById('settings-status');
+	var maskField = document.getElementById('collector-mask');
 
 	function loadSettingsToUI() {
 		chrome.storage.sync.get(
-		  { collectorHost: '127.0.0.1', collectorPort: 4934 },
-		  ({ collectorHost, collectorPort }) => {
+		  { collectorHost: '127.0.0.1', collectorPort: 4934, maskSensitiveData: false },
+		  ({ collectorHost, collectorPort, maskSensitiveData }) => {
 			hostField.value = collectorHost;
 			portField.value = collectorPort;
+			maskField.checked = maskSensitiveData;
 		  }
 		);
 	  }
@@ -45,13 +47,19 @@
 	function saveSettingsFromUI() {
 		const host = hostField.value.trim() || '127.0.0.1';
 		const port = parseInt(portField.value, 10) || 4934;
+		const mask = maskField.checked;
 	  
 		chrome.storage.sync.set(
-		  { collectorHost: host, collectorPort: port },
+		  {
+			collectorHost: host,
+			collectorPort: port,
+			maskSensitiveData: mask
+		  },
 		  () => {
 			chrome.runtime.sendMessage({ type: 'collector-settings-updated' });
 			statusMsg.style.display = 'inline';
-			setTimeout(() => statusMsg.style.display = 'none', 1500);
+			statusMsg.animate([{ opacity: 1 }, { opacity: 0 }], 1000)
+					.onfinish = () => statusMsg.style.display = 'none';
 		  }
 		);
 	  }
@@ -142,8 +150,14 @@
 		  taskVisibilityBtn.hidden = false;
 		  taskVisibilityBtn.innerText = 'Hide Task';
 		  taskSection.style.display   = 'block';   // Task visible by default
+
+		  /* Optional intro fade-out (unchanged) */
+			if (intro.style.display !== 'none') {
+				intro.animate([{ opacity: 1 }, { opacity: 0 }], 300)
+					.onfinish = () => intro.style.display = 'none';
+			}
 		}
-	  
+
 		// ======= RECORDING FINISH =======
 		else {
 		  ContentScriptProxy.finishRecording();
@@ -158,18 +172,23 @@
 		  recordBtn.innerText   = 'Start Record';
 		  pauseResumeBtn.disabled = true;
 		  pauseResumeBtn.innerText = 'Pause';
+		  pauseResumeBtn.classList.toggle('record-resume', paused);
+		  pauseResumeBtn.classList.toggle('record-pause',  !paused);
 	  
 		  /* 3. Hide the Hide/Show-Task toggle, always show task input */
 		  taskVisibilityBtn.hidden = true;
 		  taskSection.style.display = 'block';
+
+      eventTable.clear();
+
+      /* Optional intro fade-out (unchanged) */
+      intro.style.display = 'block';     // make it visible immediately
+      intro.style.opacity = 0;           // start transparent
+      intro.animate([{ opacity: 0 }, { opacity: 1 }], 300)
+           .onfinish = () => (intro.style.opacity = 1);
 		}
-	  
-		/* Optional intro fade-out (unchanged) */
-		if (intro.style.display !== 'none') {
-		  intro.animate([{ opacity: 1 }, { opacity: 0 }], 300)
-			   .onfinish = () => intro.style.display = 'none';
-		}
-	  }
+
+  }
 	
     recordBtn.addEventListener('click', recordBtnHandler);
 
@@ -192,7 +211,7 @@
 		paused = !paused;
 		pauseResumeBtn.innerText = paused ? 'Resume' : 'Pause';
 		pauseResumeBtn.classList.toggle('record-resume', paused);
-		pauseResumeBtn.classList.toggle('record-pause',  !paused);	  
+		pauseResumeBtn.classList.toggle('record-pause',  !paused);
 		if (paused) {
 			ContentScriptProxy.pauseRecording();
         } else {

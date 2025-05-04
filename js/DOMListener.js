@@ -434,7 +434,8 @@
 			var allEvents = beforeEvents.concat(afterEvents);
 			allEvents = filterValidEvents(allEvents);
 
-			if(allEvents.length <= 1 && allEvents[0].type == "attribute changed"){
+			if( (allEvents.length == 0) ||
+				allEvents.length <= 1 && allEvents[0].type == "attribute changed"){
 				bestInteractiveElement.removeAttribute("ota-use-interactive-target");
 				return;
 			}

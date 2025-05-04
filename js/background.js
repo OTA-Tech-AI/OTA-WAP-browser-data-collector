@@ -138,6 +138,7 @@
 		  case 'send-summary-event':
 		  case 'submit': {
 			sendDataToCollectorServer(message.summaryEvent);
+			sendResponse({ status: 'success' });
 			break;
 		  }
 	  

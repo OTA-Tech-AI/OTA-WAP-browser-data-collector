@@ -74,7 +74,7 @@
 
 <!-- Settings panel (initially hidden) -->
 <section class="settings-panel hidden">
-	<h5>Collector Server</h5>
+	<h5>OTA Action Capturer - Settings</h5>
   
 	<label>
 	  Host
@@ -85,6 +85,10 @@
 	  Port
 	  <input type="number" id="collector-port" min="1" max="65535" placeholder="4934">
 	</label>
+	<label>
+		<input type="checkbox" id="collector-mask">
+		Hide sensitive data before sending
+	</label>
   
 	<button id="settings-save"  class="button-primary">Save</button>
 	<button id="settings-cancel"               >Cancel</button>
@@ -92,6 +96,9 @@
   </section>
   
 <aside class="intro">
+	<img src="ico/ota-logo-128.png"
+	alt="OTA logo"
+	style="display:block; margin:0 auto 12px auto; width:64px; height:64px; border-radius:12px;"/>
     <p>Click <em>"Start Record"</em> to start recording your WAP workflow.</p>
 
     <div class="social-buttons">
