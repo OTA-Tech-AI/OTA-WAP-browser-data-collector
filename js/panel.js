@@ -34,14 +34,20 @@
 	var maskField = document.getElementById('collector-mask');
 
 	function loadSettingsToUI() {
-		chrome.storage.sync.get(
-		  { collectorHost: '127.0.0.1', collectorPort: 4934, maskSensitiveData: false },
-		  ({ collectorHost, collectorPort, maskSensitiveData }) => {
-			hostField.value = collectorHost;
-			portField.value = collectorPort;
-			maskField.checked = maskSensitiveData;
-		  }
-		);
+		try {
+		  chrome.storage.sync.get(
+			{ collectorHost: '127.0.0.1', collectorPort: 4934, maskSensitiveData:false },
+			(cfg) => {
+			  if (chrome.runtime?.id && document.isConnected) {
+				hostField.value  = cfg.collectorHost;
+				portField.value  = cfg.collectorPort;
+				maskField.checked = !!cfg.maskSensitiveData;
+			  }
+			}
+		  );
+		} catch (e) {
+		  // context was already destroyed – ignore
+		}
 	  }
 
 	function saveSettingsFromUI() {
@@ -69,9 +75,13 @@
 		  loadSettingsToUI();
 		  settingsPanel.classList.remove('hidden');
 		  document.querySelector('main').classList.add('hidden');
+		  intro.style.display = 'none';
 		} else {
 		  settingsPanel.classList.add('hidden');
 		  document.querySelector('main').classList.remove('hidden');
+		  if(!recording){
+			  intro.style.display = 'block';
+		  }
 		}
 	  }
 
