@@ -33,7 +33,6 @@
 	function sendDataToCollectorServer(payload) {
 	  return getCollectorURL()
 		.then((url) => {
-			console.log(url)
 		  return fetch(url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -131,96 +130,87 @@
         });
     }
 
-	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-		if (message.type === 'send-summary-event' ||
-			message.type === 'submit') {
-			sendDataToCollectorServer(message.summaryEvent);
-			return true;
-		}
-		else if (message.type === 'input-value-changed'){
-			const tabId = sender.tab.id;
-			const lastTimestamp = lastPageGoToTimestamps[tabId];
-			const summaryEvent = message.summaryEvent;
-			const currentTimestamp = summaryEvent.actionTimestamp;
-			if (currentTimestamp - lastTimestamp < 500) { // if less than 500 ms passed, ignore duplicate
-				console.log(`[OTA DOM Background]: input blur after clicking on link, ignored for tab ${tabId}`);
-				return false;
-			}
-			sendDataToCollectorServer(message.summaryEvent);
-			return true;
-		} else if (message.type === 'collector-settings-updated') {
-			cachedCollectorURL = null;
-			console.log('[OTA DOM Background] cache cleared after settings update');
-		  }
-	});	
-
-	chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
-		if (message.type === 'page-go-to') {
-			const tabId = sender.tab.id;
-			const clickData = message.clickData;
-
-			if (clickData && clickData.actionTimestamp) {
-				const currentTimestamp = clickData.actionTimestamp;
-				// Check if we already processed a click in this tab recently
-
-				if (lastPageGoToTimestamps[tabId] !== undefined) {
-				  const lastTimestamp = lastPageGoToTimestamps[tabId];
-				  if (currentTimestamp - lastTimestamp < 500) { // if less than 100 ms passed, ignore duplicate
-					console.log(`[OTA DOM Background]: Duplicate click data ignored for tab ${tabId}`);
-					return false;
-				  }
-				}
-				// Update the last click timestamp for the tab.
-				lastPageGoToTimestamps[tabId] = currentTimestamp;
-			}
-			sendDataToCollectorServer(clickData);
-			return true;
-		}
-		// Return false if no asynchronous response is needed.
-		return false;
-	});
-
 	chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
-		switch (message.type) {
+		const { type } = message;
+		const tabId    = sender?.tab?.id;                  // may be undefined for non‑tab senders
+	  
+		switch (type) {
+		  case 'send-summary-event':
+		  case 'submit': {
+			sendDataToCollectorServer(message.summaryEvent);
+			break;
+		  }
+	  
+		  case 'input-value-changed': {
+			const lastTs = lastPageGoToTimestamps[tabId];
+			const curTs  = message.summaryEvent.actionTimestamp;
+			if (lastTs && curTs - lastTs < 500) {          // ignore click‑then‑blur duplicates
+			  console.log(`[OTA] input blur ignored in tab ${tabId}`);
+			  return false;
+			}
+			sendDataToCollectorServer(message.summaryEvent);
+			break;
+		  }
+	  
+		  case 'collector-settings-updated': {
+			cachedCollectorURL = null;                     // force rebuild on next POST
+			console.log('[OTA] collector URL cache cleared');
+			break;
+		  }
+	  
+		  case 'page-go-to': {
+			const clickData       = message.clickData;
+			const curTs           = clickData?.actionTimestamp;
+			const lastTs          = lastPageGoToTimestamps[tabId];
+	  
+			if (lastTs && curTs - lastTs < 500) {          // duplicate suppression
+			  console.log(`[OTA] duplicate click ignored for tab ${tabId}`);
+			  return false;
+			}
+			lastPageGoToTimestamps[tabId] = curTs;
+			sendDataToCollectorServer(clickData);
+			break;
+		  }
+	  
 		  case 'update-page-content': {
-			const tabId = sender.tab.id;
 			pageContentStore[tabId] = message.sanitizedPageHTML;
 			sendResponse({ status: 'success', taskId: taskIdMap[tabId] });
-			break;
+			return true;                                   // keep channel open for async
 		  }
+	  
 		  case 'delete-page-content': {
-			const tabId = sender.tab.id;
 			delete pageContentStore[tabId];
-			console.log(`[OTA DOM Background]: Delete page content for tab ${tabId}`);
+			console.log(`[OTA] page content deleted for tab ${tabId}`);
 			sendResponse({ status: 'success' });
-			break;
+			return true;
 		  }
+	  
 		  case 'task-start': {
-			const tabId = sender.tab.id;
-			const newId = generateTaskId();
-			taskIdMap[tabId]      = newId;
-			console.log("2213421312");
+			const newId             = generateTaskId();
+			taskIdMap[tabId]        = newId;
 			pageContentStore[tabId] = message.summaryEvent.pageHTMLContent;
 			message.summaryEvent.taskId = newId;
 			sendDataToCollectorServer(message.summaryEvent);
 			sendResponse({ status: 'success', taskId: newId });
-			break;
+			return true;
 		  }
+	  
 		  case 'task-finish': {
-			const tabId = sender.tab.id;
 			sendDataToCollectorServer(message.summaryEvent);
 			delete taskIdMap[tabId];
 			sendResponse({ status: 'success' });
-			break;
+			return true;
 		  }
+	  
 		  case 'get-task-id': {
-			const tabId = message.tabId;
-			sendResponse({ status: 'success', taskId: taskIdMap[tabId] });
-			break;
+			sendResponse({ status: 'success', taskId: taskIdMap[message.tabId] });
+			return true;
 		  }
+
 		  default:
 			break;
 		}
+		// For synchronous branches we fall through and return false
 		return false;
 	  });
 
