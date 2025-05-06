@@ -3,7 +3,8 @@
 
 	const taskIdMap = {};
 	const lastPageGoToTimestamps = {};
-	let cachedCollectorURL = null;
+	let collectorHost = "127.0.0.1";
+	let collectorPort = 4934;
 
 	function generateTaskId() {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -16,41 +17,41 @@
 		return id;
 	}
 
-	function getCollectorURL() {
-	  if (cachedCollectorURL) return Promise.resolve(cachedCollectorURL);
+	chrome.storage.sync.get(
+		{ storedCollectorHost: '127.0.0.1', storedCollectorPort: 4934 },
+		({ storedCollectorHost, storedCollectorPort }) => {
+			collectorHost = storedCollectorHost;
+			collectorPort = storedCollectorPort;
+		}
+	);
+
+	chrome.storage.onChanged.addListener((changes, area) => {
+		if (area === 'sync' && 'storedCollectorHost' in changes) {
+			collectorHost = changes.storedCollectorHost.newValue;
+		}
+		if (area === 'sync' && 'storedCollectorPort' in changes) {
+			collectorPort = changes.storedCollectorPort.newValue;
+		}
+	});
 	
-	  return new Promise((resolve) => {
-		chrome.storage.sync.get(
-		  { collectorHost: '127.0.0.1', collectorPort: 4934 },
-		  ({ collectorHost, collectorPort }) => {
-			cachedCollectorURL = `http://${collectorHost}:${collectorPort}/action-data`;
-			resolve(cachedCollectorURL);
-		  }
-		);
-	  });
-	}
-	
-	function sendDataToCollectorServer(payload) {
-	  return getCollectorURL()
-		.then((url) => {
-		  return fetch(url, {
+
+	function sendDataToCollectorServer(data){
+		const url = `http://${collectorHost}:${collectorPort}/action-data`;
+		// Optionally send a response back.
+		fetch(url, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(payload),
-			keepalive: true              // allow send during service‑worker shutdown
-		  });
-		})
-		.then(async (resp) => {
-		  const json = await resp.json().catch(() => ({}));
-		  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-		  console.log('[OTA DOM Background] sent OK:', json);
-		  return json;
-		})
-		.catch((err) => {
-		  console.error('[OTA DOM Background] send failed:', err);
-		  // Re‑throw so callers can handle if they want
-		  throw err;
-		});
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(data)
+			})
+			.then(response => response.json())
+			.then(data => {
+			console.log("[OTA DOM Background]: Data sent to server successfully:", data);
+			})
+			.catch(err => {
+			console.error("[OTA DOM Background]: Error sending data to server:", err);
+			});
 	}
 
     chrome.runtime.onConnect.addListener(function (port) {
@@ -150,12 +151,6 @@
 			  return false;
 			}
 			sendDataToCollectorServer(message.summaryEvent);
-			break;
-		  }
-	  
-		  case 'collector-settings-updated': {
-			cachedCollectorURL = null;                     // force rebuild on next POST
-			console.log('[OTA] collector URL cache cleared');
 			break;
 		  }
 	  

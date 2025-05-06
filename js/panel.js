@@ -36,11 +36,11 @@
 	function loadSettingsToUI() {
 		try {
 		  chrome.storage.sync.get(
-			{ collectorHost: '127.0.0.1', collectorPort: 4934, maskSensitiveData:false },
+			{ storedCollectorHost: '127.0.0.1', storedCollectorPort: 4934, maskSensitiveData:false },
 			(cfg) => {
 			  if (chrome.runtime?.id && document.isConnected) {
-				hostField.value  = cfg.collectorHost;
-				portField.value  = cfg.collectorPort;
+				hostField.value  = cfg.storedCollectorHost;
+				portField.value  = cfg.storedCollectorPort;
 				maskField.checked = !!cfg.maskSensitiveData;
 			  }
 			}
@@ -57,15 +57,9 @@
 	  
 		chrome.storage.sync.set(
 		  {
-			collectorHost: host,
-			collectorPort: port,
+			storedCollectorHost: host,
+			storedCollectorPort: port,
 			maskSensitiveData: mask
-		  },
-		  () => {
-			chrome.runtime.sendMessage({ type: 'collector-settings-updated' });
-			statusMsg.style.display = 'inline';
-			statusMsg.animate([{ opacity: 1 }, { opacity: 0 }], 1000)
-					.onfinish = () => statusMsg.style.display = 'none';
 		  }
 		);
 	  }
