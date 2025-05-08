@@ -671,7 +671,7 @@
 			target: "",
 			targetId: target.id,
 			targetClass: target.className,
-			value: target.attributes.value.value
+			value: newValue
 		}
 
 		actionTarget.target = trimTarget(target);
@@ -717,7 +717,7 @@
 			observer.observe(shadowRoot, observerSettings);
 		});
 
-		document.addEventListener('click', handleUserClickLink);
+		document.addEventListener('click', handleUserClickLink, true);
 		document.addEventListener('click', debouncedClickHandler);
 		document.addEventListener('dblclick', dblClickHandler);
 		document.addEventListener('submit', submitHandler);
