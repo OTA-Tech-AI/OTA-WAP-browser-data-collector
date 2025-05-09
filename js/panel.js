@@ -273,7 +273,9 @@
             injectContentScript();
         } else if (message.type === 'event') {
             eventTable.addEvent(message.event);
-        }
+        } else if (message.type === 'clear-events') {
+			eventTable.clear();
+		}
     });
 
     injectContentScript();

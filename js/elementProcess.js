@@ -145,7 +145,7 @@ function findFirstLinkElementOrNone(start){
 		if (isLiClickable(el))   return el;  
 		// If you encounter an interactive element (other than an anchor)
 		if (INTERACTIVE_SKIP.has(el.tagName.toLowerCase())) {
-		  console.log("Found interactive element in the upward chain. Exiting:", target.tagName);
+		  console.log("Found interactive element in the upward chain. Exiting:", el.tagName);
 		  return null;  // Let the other listener handle this case.
 		}
 		el = el.parentElement;

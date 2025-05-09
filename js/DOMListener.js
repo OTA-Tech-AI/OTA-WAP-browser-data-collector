@@ -12,6 +12,7 @@
 	let taskId = null;
 	let taskDescription = "";
 	const CLICK_DELAY = 500; // delay in ms to distinguish single vs double clic
+	const TopKEvents = 40;
 
 	var mutationBuffer = [];
 	var BUFFER_WINDOW = 1000; // milliseconds for before/after user action
@@ -22,14 +23,18 @@
     }
 
     var observer = new MutationObserver(onMutation);
-    var observerSettings = {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        attributeOldValue: true,
-        characterData: true,
-        characterDataOldValue: true
-    };
+	const observerSettings = {
+		subtree      : true,
+		childList    : true,
+		attributes   : true,
+		attributeOldValue : true,
+		attributeFilter   : [
+		   // only attrs that matter for UX or navigation
+		   'href','src','value','aria-label','title',
+		   'aria-expanded','aria-selected','aria-pressed'
+		],
+		characterData: false
+	};
 
     var nodeRegistry = [];
 
@@ -330,6 +335,24 @@
 		});
 	}
 
+	function dedupPush(acc, evt){
+		if (!evt) return acc;
+		const key = `${evt.type}|${evt.target?.selector}`;
+		if (acc._seen.has(key)) return acc;
+		acc._seen.add(key);
+		acc.list.push(evt);
+		return acc;
+	}
+
+	function scoreEvent(evt){
+		if (evt.type.startsWith('nodes added') ||
+			evt.type.startsWith('nodes removed')) return 3;
+		if (evt.type === 'text changed')          return 2;
+		if (evt.type === 'attribute changed')
+			return /^(href|value)$/i.test(evt.attribute) ? 2 : 1;
+		return 0;
+	}
+
 	function getCurrentHTMLSanitized(){
 		// Add a hook to remove inline styles after attributes are sanitized.
 		DOMPurify.addHook('afterSanitizeAttributes', function(node) {
@@ -409,36 +432,33 @@
                 return record.timestamp - actionTime <= BUFFER_WINDOW && record.timestamp - actionTime >= 0;
             });
 
-            // Transform the raw mutation records to the loggable event format.
-            var beforeEvents = beforeMutations.map(transformRecord).reduce(function(acc, item) {
-				// If item is an array, concatenate its elements; otherwise, push it.
-				if (Array.isArray(item)) {
-				  return acc.concat(item);
-				} else if (item !== null && item !== undefined) {
-				  acc.push(item);
-				  return acc;
-				}
-				return acc;
-			  }, []);
-            var afterEvents = afterMutations.map(transformRecord).reduce(function(acc, item) {
-				// If item is an array, concatenate its elements; otherwise, push it.
-				if (Array.isArray(item)) {
-				  return acc.concat(item);
-				} else if (item !== null && item !== undefined) {
-				  acc.push(item);
-				  return acc;
-				}
-				return acc;
-			  }, []);
+            // // Transform the raw mutation records to the loggable event format.
+			const beforeEventsRaw = beforeMutations.map(transformRecord).reduce((acc,item)=>{
+			   if (Array.isArray(item)) return acc.concat(item);
+			   if (item!=null && item!==undefined) acc.push(item);
+			   return acc;
+			},[]);
 
+			const afterEventsRaw  = afterMutations.map(transformRecord).reduce((acc,item)=>{
+				if (Array.isArray(item)) return acc.concat(item);
+				if (item!=null && item!==undefined) acc.push(item);
+				return acc;
+			},[]);
+
+			const beforeEvents = beforeEventsRaw.reduce((acc,e)=>dedupPush(acc,e), {_seen:new Set(),list:[]}).list;
+			const afterEvents  = afterEventsRaw.reduce((acc,e)=>dedupPush(acc,e), {_seen:new Set(),list:[]}).list;
 			var allEvents = beforeEvents.concat(afterEvents);
 			allEvents = filterValidEvents(allEvents);
+			allEvents.sort((a,b)=>scoreEvent(b)-scoreEvent(a));
+			allEvents = allEvents.slice(0, TopKEvents);
 
-			if( (allEvents.length == 0) ||
-				allEvents.length <= 1 && allEvents[0].type == "attribute changed"){
-				bestInteractiveElement.removeAttribute("ota-use-interactive-target");
-				return;
-			}
+			// if( (allEvents.length == 0) ||
+			// 	allEvents.length <= 1 && allEvents[0].type == "attribute changed"){
+			// 	bestInteractiveElement.removeAttribute("ota-use-interactive-target");
+			// 	return;
+			// }
+
+			bgPageConnection.postMessage({ type: 'clear-events' });
 
 			var summaryEvent = {
 				taskId: taskId,
