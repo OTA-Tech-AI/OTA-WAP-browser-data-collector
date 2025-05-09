@@ -107,33 +107,63 @@ function findBestInteractiveElement(target, maxDepth = 3) {
 	return target;
 }
 
-function findFirstLinkElementOrNone(target){
-	const interactiveElements = new Set([
-		"button", "input", "select", "textarea",
-		"details", "summary", "label", "option", "optgroup", "fieldset", "legend"
+function isLiClickable(el) {
+	if (!el || el.tagName !== 'LI') return false;
+  
+	// (a) explicit event handler
+	if (el.onclick || el.hasAttribute('onclick')) return true;
+  
+	// Google & many SPAs add jsaction="click:someHandler"
+	const jsAction = el.getAttribute('jsaction') || '';
+	if (/(^|\s)click:/.test(jsAction)) return true;
+  
+	// (b) keyboard/ARIA affordance
+	const role = (el.getAttribute('role') || '').toLowerCase();
+	if (['option', 'menuitem', 'menuitemcheckbox',
+		 'menuitemradio', 'link'].includes(role)) return true;
+  
+	// (c) focusable list-item
+	if (el.hasAttribute('tabindex') &&
+		parseInt(el.getAttribute('tabindex'), 10) >= 0) return true;
+  
+	return false;
+  }
+
+function findFirstLinkElementOrNone(start){
+	if (!start) return null;
+
+	const INTERACTIVE_SKIP = new Set([
+		'button','input','select','textarea',
+		'details','summary','label','option',
+		'optgroup','fieldset','legend'
 	  ]);
 	  
 	  // Limit upward traversal to at most 5 layers.
-	  let layers = 0;
-	  while (target && layers < 5) {
+	  let el = start, depth = 0;
+	  while (el && depth < 7) {
+		if (el.tagName === 'A') return el;
+		if (isLiClickable(el))   return el;  
 		// If you encounter an interactive element (other than an anchor)
-		if (interactiveElements.has(target.tagName.toLowerCase())) {
+		if (INTERACTIVE_SKIP.has(el.tagName.toLowerCase())) {
 		  console.log("Found interactive element in the upward chain. Exiting:", target.tagName);
 		  return null;  // Let the other listener handle this case.
 		}
-		// If the element is an anchor (<A>), we've found our candidate.
-		if (target.tagName === 'A') {
-		  break;
-		}
-		target = target.parentElement;
-		layers++;
+		el = el.parentElement;
+		depth++;
 	  }
-	  
-	  // If no anchor was found after 5 layers, do nothing.
-	  if (!target || target.tagName !== 'A') {
+
+	  function searchChildren(node, level = 1) {
+		if (!node || level > 2) return null;
+		for (const child of node.children) {
+		  if (child.tagName === 'A' || isLiClickable(child)) return child;
+		}
+		for (const child of node.children) {
+		  const found = searchChildren(child, level + 1);
+		  if (found) return found;
+		}
 		return null;
 	  }
-	  return target;
+	  return searchChildren(start);
 }
 
 

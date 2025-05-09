@@ -478,7 +478,7 @@
 		// Traverse up the DOM tree to find an anchor if the clicked element isn’t directly an <a>
 		target = findFirstLinkElementOrNone(target);
 
-		if (target && target.tagName === 'A') {
+		if (target && (target.tagName === 'A' || isLiClickable(target))) {
 
 			var actionTarget = {
 				type: event.type,
@@ -718,8 +718,8 @@
 		});
 
 		document.addEventListener('click', handleUserClickLink, true);
-		document.addEventListener('click', debouncedClickHandler);
-		document.addEventListener('dblclick', dblClickHandler);
+		document.addEventListener('click', debouncedClickHandler, true);
+		document.addEventListener('dblclick', dblClickHandler, true);
 		document.addEventListener('submit', submitHandler);
 		window.addEventListener('popstate', handleUserAction);
 		addTextFieldBlurListeners();
