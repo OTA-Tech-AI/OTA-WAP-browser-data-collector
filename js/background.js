@@ -6,6 +6,29 @@
 	let collectorHost = "127.0.0.1";
 	let collectorPort = 4934;
 
+	let recordingState = {
+		isRecording: false,
+		isPaused: false,
+		taskId: null,
+		taskDescription: ""
+	};
+
+	function broadcastRecordingState() {
+		const payload = { type: "sync-state", state: recordingState };
+		if (devToolsPorts) {
+			Object.values(devToolsPorts).forEach(port => {
+				if (port) port.postMessage(payload);
+			});
+		}
+		if (popupPorts) {
+			Object.values(popupPorts).forEach(port => {
+				if (port) port.postMessage(payload);
+			});
+		}
+	}
+	
+	
+
 	function generateTaskId() {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 					+ 'abcdefghijklmnopqrstuvwxyz'
@@ -36,22 +59,23 @@
 	
 
 	function sendDataToCollectorServer(data){
-		const url = `http://${collectorHost}:${collectorPort}/action-data`;
-		// Optionally send a response back.
-		fetch(url, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(data)
-			})
-			.then(response => response.json())
-			.then(data => {
-			console.log("[OTA DOM Background]: Data sent to server successfully:", data);
-			})
-			.catch(err => {
-			console.error("[OTA DOM Background]: Error sending data to server:", err);
-			});
+		console.log("[OTA Background] (dev): Would send to server:", data);
+		// const url = `http://${collectorHost}:${collectorPort}/action-data`;
+		// // Optionally send a response back.
+		// fetch(url, {
+		// 	method: 'POST',
+		// 	headers: {
+		// 		'Content-Type': 'application/json'
+		// 	},
+		// 	body: JSON.stringify(data)
+		// 	})
+		// 	.then(response => response.json())
+		// 	.then(data => {
+		// 	console.log("[OTA DOM Background]: Data sent to server successfully:", data);
+		// 	})
+		// 	.catch(err => {
+		// 	console.error("[OTA DOM Background]: Error sending data to server:", err);
+		// 	});
 	}
 
     chrome.runtime.onConnect.addListener(function (port) {
@@ -102,6 +126,23 @@
             port.onMessage.removeListener(messageListener);
         });
     }
+
+	function broadcastRecordingState() {
+		const msg = {
+			type: 'sync-recording-state',
+			state: recordingState
+		};
+	
+		for (const [tabId, port] of Object.entries(devToolsPorts)) {
+			if (port) port.postMessage(msg);
+		}
+		if (typeof popupPorts !== "undefined") {
+			for (const [tabId, port] of Object.entries(popupPorts)) {
+				if (port) port.postMessage(msg);
+			}
+		}
+	}
+	
 
     function handleContentScriptConnection(port) {
         var tabId = port.sender.tab.id;
@@ -202,6 +243,26 @@
 			sendResponse({ status: 'success', taskId: taskIdMap[message.tabId] });
 			return true;
 		  }
+
+		  case 'get-recording-state': {
+			sendResponse({ status: 'success', state: recordingState });
+			return true; // Keep message channel open
+		  }
+		
+		  case 'update-recording-state': {
+			const { isRecording, isPaused, taskId, taskDescription } = message;
+		
+			if (typeof isRecording === 'boolean') recordingState.isRecording = isRecording;
+			if (typeof isPaused === 'boolean')    recordingState.isPaused    = isPaused;
+			if (typeof taskId === 'string')       recordingState.taskId      = taskId;
+			if (typeof taskDescription === 'string') recordingState.taskDescription = taskDescription;
+		
+			// Optionally notify all ports
+			broadcastRecordingState();
+			sendResponse({ status: 'success' });
+			return true;
+		  }
+		
 
 		  default:
 			break;

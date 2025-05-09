@@ -17,9 +17,9 @@
 
     var eventTable = new EventTable(table);
 
-    var recording = false;
-	var paused = false;
-	var taskId = "";
+    // var recording = false;
+	// var paused = false;
+	// var taskId = "";
 
 	// Initially disable the Task Finish button
 	pauseResumeBtn.disabled = true;
@@ -119,80 +119,101 @@
 			type: 'get-task-id',
 			tabId: chrome.devtools.inspectedWindow.tabId
 		  }, function(response) {
-			  taskId = response.taskId;
-			  taskIdDisplay.innerText = "ID: " + taskId;
+
+			 taskIdDisplay.innerText = "ID: " + (response.taskId || "...");
+			 
 		  });
 	  }
 
-	  function recordBtnHandler() {
-		// ======= RECORDING START =======
-		if (!recording) {
-		  const desc = taskInput.value.trim();
-		  /* 1. Block start if description empty */
-		  if (!desc) {
-			taskInput.classList.add('invalid');
-			taskInput.focus();
-			return;
-		  }
-		  taskInput.classList.remove('invalid');
-	  
-		  /* 2. Switch input → plain-text label */
-		  showLabel(desc);
-	  
-		  /* 3. Begin recording */
-		  ContentScriptProxy.startRecording(desc);
-		  setTimeout(() => { getCurrentTaskId(); }, 1000);
-		  recording = true;
-		  paused    = false;
-	  
-		  /* 4. Update buttons */
-		  recordBtn.innerText   = 'Finish Record';
-		  pauseResumeBtn.disabled = false;
-		  pauseResumeBtn.innerText = 'Pause';
-	  
-		  /* 5. Show the Hide/Show-Task toggle */
-		  taskVisibilityBtn.hidden = false;
-		  taskVisibilityBtn.innerText = 'Hide Task';
-		  taskSection.style.display   = 'block';   // Task visible by default
-
-		  /* Optional intro fade-out (unchanged) */
-			if (intro.style.display !== 'none') {
-				intro.animate([{ opacity: 1 }, { opacity: 0 }], 300)
-					.onfinish = () => intro.style.display = 'none';
+	function syncUIWithRecordingState(state) {
+		const { isRecording, isPaused, taskDescription, taskId } = state;
+		
+			if (isRecording) {
+				showLabel(taskDescription || "(no description)");
+				taskIdDisplay.innerText = "ID: " + (taskId || "...");
+				recordBtn.innerText = 'Finish Record';
+				pauseResumeBtn.disabled = false;
+				pauseResumeBtn.innerText = isPaused ? 'Resume' : 'Pause';
+				pauseResumeBtn.classList.toggle('record-resume', isPaused);
+				pauseResumeBtn.classList.toggle('record-pause', !isPaused);
+				taskVisibilityBtn.hidden = false;
+				taskSection.style.display = 'block';
+				intro.style.display = 'none';
+			} else {
+				showInput(true);
+				recordBtn.innerText = 'Start Record';
+				pauseResumeBtn.disabled = true;
+				pauseResumeBtn.innerText = 'Pause';
+				pauseResumeBtn.classList.remove('record-resume');
+				pauseResumeBtn.classList.remove('record-pause');
+				taskVisibilityBtn.hidden = true;
+				taskSection.style.display = 'block';
+				intro.style.display = 'block';
 			}
-		}
+	}
+	
 
-		// ======= RECORDING FINISH =======
-		else {
-		  ContentScriptProxy.finishRecording();
-		  taskIdDisplay.innerText = '...';
-	  
-		  /* 1. Restore input field */
-		  showInput(true);            // clear value
-		  recording = false;
-		  paused    = false;
-	  
-		  /* 2. Update buttons */
-		  recordBtn.innerText   = 'Start Record';
-		  pauseResumeBtn.disabled = true;
-		  pauseResumeBtn.innerText = 'Pause';
-		  pauseResumeBtn.classList.toggle('record-resume', paused);
-		  pauseResumeBtn.classList.toggle('record-pause',  !paused);
-	  
-		  /* 3. Hide the Hide/Show-Task toggle, always show task input */
-		  taskVisibilityBtn.hidden = true;
-		  taskSection.style.display = 'block';
-
-      eventTable.clear();
-
-      /* Optional intro fade-out (unchanged) */
-      intro.style.display = 'block';     // make it visible immediately
-      intro.style.opacity = 0;           // start transparent
-      intro.animate([{ opacity: 0 }, { opacity: 1 }], 300)
-           .onfinish = () => (intro.style.opacity = 1);
-		}
-
-  }
+	function recordBtnHandler() {
+		chrome.runtime.sendMessage({ type: 'get-recording-state' }, (resp) => {
+			if (resp.status !== 'success') return;
+			const { isRecording } = resp.state;
+	
+			// ======= RECORDING START =======
+			if (!isRecording) {
+				const desc = taskInput.value.trim();
+				if (!desc) {
+					taskInput.classList.add('invalid');
+					taskInput.focus();
+					return;
+				}
+				taskInput.classList.remove('invalid');
+	
+				showLabel(desc);
+				ContentScriptProxy.startRecording(desc);
+	
+				// 设置 background 状态
+				chrome.runtime.sendMessage({
+					type: 'update-recording-state',
+					isRecording: true,
+					isPaused: false,
+					taskDescription: desc
+				});
+	
+				setTimeout(() => { getCurrentTaskId(); }, 1000);
+	
+			// ======= RECORDING FINISH =======
+			} else {
+				ContentScriptProxy.finishRecording();
+	
+				chrome.runtime.sendMessage({
+					type: 'update-recording-state',
+					isRecording: false,
+					isPaused: false,
+					taskId: null,
+					taskDescription: ""
+				});
+	
+				taskIdDisplay.innerText = '...';
+				showInput(true);
+				eventTable.clear();
+	
+				// Reset UI
+				recordBtn.innerText = 'Start Record';
+				pauseResumeBtn.disabled = true;
+				pauseResumeBtn.innerText = 'Pause';
+				pauseResumeBtn.classList.remove('record-resume');
+				pauseResumeBtn.classList.remove('record-pause');
+				taskVisibilityBtn.hidden = true;
+				taskSection.style.display = 'block';
+	
+				intro.style.display = 'block';
+				intro.style.opacity = 0;
+				intro.animate([{ opacity: 0 }, { opacity: 1 }], 300)
+					 .onfinish = () => (intro.style.opacity = 1);
+			}
+		});
+	}
+	
 	
     recordBtn.addEventListener('click', recordBtnHandler);
 
@@ -211,18 +232,28 @@
 	});
 
 	pauseResumeBtn.addEventListener('click', function () {
-		if (!recording) return;
-		paused = !paused;
-		pauseResumeBtn.innerText = paused ? 'Resume' : 'Pause';
-		pauseResumeBtn.classList.toggle('record-resume', paused);
-		pauseResumeBtn.classList.toggle('record-pause',  !paused);
-		if (paused) {
-			ContentScriptProxy.pauseRecording();
-        } else {
-            ContentScriptProxy.resumeRecording(taskLabel.textContent);
-			setTimeout(() => { getCurrentTaskId(); }, 1000);
-        }
+		chrome.runtime.sendMessage({ type: 'get-recording-state' }, (resp) => {
+			if (resp.status !== 'success') return;
+			const { isPaused, isRecording, taskDescription } = resp.state;
+	
+			if (!isRecording) return;
+	
+			const newPaused = !isPaused;
+	
+			if (newPaused) {
+				ContentScriptProxy.pauseRecording();
+			} else {
+				ContentScriptProxy.resumeRecording(taskDescription);
+				setTimeout(() => { getCurrentTaskId(); }, 1000);
+			}
+	
+			chrome.runtime.sendMessage({
+				type: 'update-recording-state',
+				isPaused: newPaused
+			});
+		});
 	});
+	
 
     clearBtn.addEventListener('click', function () {
         eventTable.clear();
@@ -253,6 +284,17 @@
         });
     }
 
+	// === Step 2: 初始化同步 recording 状态 ===
+	chrome.runtime.sendMessage({ type: 'get-recording-state' }, (resp) => {
+		if (resp.status === 'success') {
+			const state = resp.state;
+			syncUIWithRecordingState(state);
+		} else {
+			console.warn("[OTA Panel]: Failed to get recording state from background");
+		}
+	});
+
+
     var bgPageConnection = chrome.runtime.connect({
         name: "devtools-page"
     });
@@ -263,10 +305,13 @@
 
             eventTable.clear();
 
-            if (recording) {
-                ContentScriptProxy.resumeRecording(taskLabel.textContent);
-				setTimeout(() => { getCurrentTaskId(); }, 1000);
-            }
+            chrome.runtime.sendMessage({ type: 'get-recording-state' }, (resp) => {
+				if (resp.status === 'success' && resp.state.isRecording) {
+					ContentScriptProxy.resumeRecording(resp.state.taskDescription);
+					setTimeout(() => { getCurrentTaskId(); }, 1000);
+				}
+			});
+
         } else if (message.type === 'disconnected') {
             statusElem.classList.remove('connected');
 
