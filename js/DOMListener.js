@@ -452,11 +452,10 @@
 			allEvents.sort((a,b)=>scoreEvent(b)-scoreEvent(a));
 			allEvents = allEvents.slice(0, TopKEvents);
 
-			// if( (allEvents.length == 0) ||
-			// 	allEvents.length <= 1 && allEvents[0].type == "attribute changed"){
-			// 	bestInteractiveElement.removeAttribute("ota-use-interactive-target");
-			// 	return;
-			// }
+			if( (allEvents.length == 0)){
+				bestInteractiveElement.removeAttribute("ota-use-interactive-target");
+				return;
+			}
 
 			bgPageConnection.postMessage({ type: 'clear-events' });
 
@@ -498,7 +497,7 @@
 		// Traverse up the DOM tree to find an anchor if the clicked element isn’t directly an <a>
 		target = findFirstLinkElementOrNone(target);
 
-		if (target && (target.tagName === 'A' || isLiClickable(target))) {
+		if (target && (target.tagName === 'A' || isElementClickable(target))) {
 
 			var actionTarget = {
 				type: event.type,

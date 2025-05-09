@@ -107,25 +107,42 @@ function findBestInteractiveElement(target, maxDepth = 3) {
 	return target;
 }
 
-function isLiClickable(el) {
-	if (!el || el.tagName !== 'LI') return false;
-  
-	// (a) explicit event handler
-	if (el.onclick || el.hasAttribute('onclick')) return true;
-  
-	// Google & many SPAs add jsaction="click:someHandler"
-	const jsAction = el.getAttribute('jsaction') || '';
-	if (/(^|\s)click:/.test(jsAction)) return true;
-  
-	// (b) keyboard/ARIA affordance
-	const role = (el.getAttribute('role') || '').toLowerCase();
-	if (['option', 'menuitem', 'menuitemcheckbox',
-		 'menuitemradio', 'link'].includes(role)) return true;
-  
-	// (c) focusable list-item
+function isElementClickable(el){
+	if (!el || el.nodeType !== 1) return false;
+
+	// 1. inline or programmatic click handler
+	if (el.onclick || el.hasAttribute('onclick') ||
+		(window.getEventListeners?.(el).click||[]).length){
+			console.log(111)
+			return true;
+		}
+
+	// 2. ARIA role / keyboard focus
+	const role = (el.getAttribute('role')||'').toLowerCase();
+	if (['option','menuitem','menuitemcheckbox','menuitemradio',
+		 'button','link','tab'].includes(role)){
+			console.log(222)
+			return true;
+		 }
+
 	if (el.hasAttribute('tabindex') &&
-		parseInt(el.getAttribute('tabindex'), 10) >= 0) return true;
-  
+		parseInt(el.getAttribute('tabindex'),10) >= 0){
+			console.log(333)
+			return true;
+		}
+
+	// 3. visual pointer cue
+	const style = window.getComputedStyle(el);
+	if (style.cursor === 'pointer'){
+		console.log(444)
+		return true;
+	}
+
+	// 4. jsaction like “click:…”
+	if (/(\s|^)click:/.test(el.getAttribute('jsaction')||'')){
+		console.log(555)
+		return true;
+	}
 	return false;
   }
 
@@ -140,9 +157,9 @@ function findFirstLinkElementOrNone(start){
 	  
 	  // Limit upward traversal to at most 5 layers.
 	  let el = start, depth = 0;
-	  while (el && depth < 7) {
+	  while (el && depth < 5) {
 		if (el.tagName === 'A') return el;
-		if (isLiClickable(el))   return el;  
+		if (isElementClickable(el))   return el;
 		// If you encounter an interactive element (other than an anchor)
 		if (INTERACTIVE_SKIP.has(el.tagName.toLowerCase())) {
 		  console.log("Found interactive element in the upward chain. Exiting:", el.tagName);
@@ -152,18 +169,20 @@ function findFirstLinkElementOrNone(start){
 		depth++;
 	  }
 
-	  function searchChildren(node, level = 1) {
-		if (!node || level > 2) return null;
-		for (const child of node.children) {
-		  if (child.tagName === 'A' || isLiClickable(child)) return child;
-		}
-		for (const child of node.children) {
-		  const found = searchChildren(child, level + 1);
-		  if (found) return found;
-		}
-		return null;
-	  }
-	  return searchChildren(start);
+	  return null;
+
+	//   function searchChildren(node, level = 1) {
+	// 	if (!node || level > 2) return null;
+	// 	for (const child of node.children) {
+	// 	  if (child.tagName === 'A' || isElementClickable(child)) return child;
+	// 	}
+	// 	for (const child of node.children) {
+	// 	  const found = searchChildren(child, level + 1);
+	// 	  if (found) return found;
+	// 	}
+	// 	return null;
+	//   }
+	//   return searchChildren(start);
 }
 
 
